@@ -91,6 +91,39 @@ def get_tipos_documento_by_seccion(seccion_id):
     # Formatea la respuesta para que sea fácil de consumir por JavaScript
     return jsonify([{'id': id, 'nombre': nombre} for id, nombre in tipos_documento])
 
+@legajo_bp.route('/documentos/buscar')
+@login_required
+@role_required('AdministradorLegajos', 'RRHH', 'Sistemas')
+def buscar_documentos():
+    """
+    Buscador de documentos que permite filtrar por texto, sección o tipo de documento.
+    """
+    legajo_service = current_app.config['LEGAJO_SERVICE']
+    
+    # Obtener parámetros de búsqueda
+    query = request.args.get('q', '').strip()
+    id_seccion = request.args.get('seccion', '0')
+    id_tipo = request.args.get('tipo', '0')
+    
+    # Realizar búsqueda si hay filtros aplicados
+    documentos = []
+    if query or (id_seccion and id_seccion != '0') or (id_tipo and id_tipo != '0'):
+        documentos = legajo_service.search_documents(query, id_seccion, id_tipo)
+    
+    # Obtener listas para los filtros
+    secciones = legajo_service.get_secciones_for_select()
+    tipos_documento = legajo_service.get_tipos_documento_for_select()
+    
+    return render_template(
+        'admin/buscar_documentos.html',
+        documentos=documentos,
+        secciones=secciones,
+        tipos_documento=tipos_documento,
+        query=query,
+        id_seccion=id_seccion,
+        id_tipo=id_tipo
+    )
+
 @legajo_bp.route('/dashboard')
 @login_required
 @role_required('AdministradorLegajos', 'RRHH')

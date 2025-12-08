@@ -270,6 +270,10 @@ class LegajoService:
         doc_data['nombre_archivo'] = filename
         doc_data['hash_archivo'] = file_hash
         id_personal = doc_data.get('id_personal')
+        
+        # Si no se proporciona fecha de emisión, usar la fecha actual
+        if not doc_data.get('fecha_emision'):
+            doc_data['fecha_emision'] = datetime.now().date()
 
         self._personal_repo.add_document(doc_data, file_bytes)
         
@@ -613,3 +617,8 @@ class LegajoService:
             
         return False
 
+    def search_documents(self, query=None, id_seccion=None, id_tipo=None):
+        """
+        Orquesta la búsqueda de documentos por descripción, tipo o sección.
+        """
+        return self._personal_repo.search_documents(query, id_seccion, id_tipo)

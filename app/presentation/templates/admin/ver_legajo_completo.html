@@ -4,338 +4,360 @@
 {% block title %}Legajo de {{ legajo.personal.nombres }} {{ legajo.personal.apellidos }}{% endblock %}
 
 {% macro render_table(items, title) %}
-    <h5 class="mt-4 mb-3"><i class="bi bi-collection-fill me-2"></i>{{ title }}</h5>
-    {% if items %}
-    <div class="table-responsive">
-        <table class="table table-bordered table-sm table-hover align-middle">
-            <thead class="table-light">
-                <tr class="text-center">
-                    <th style="width: 5%;">#</th>
-                    <th style="width: 30%;">Tipo de Documento</th>
-                    <th>Descripción / Contenido</th>
-                    <th style="width: 15%;">Fecha</th>
-                    <th style="width: 15%;">Acciones</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for item in items %}
-                    {% set row_class = '' %}
-                    {% set alert_badge = '' %}
-                    {% if item.fecha_vencimiento and today %}
-                        {% set days_diff = (item.fecha_vencimiento - today).days %}
-                        {% if days_diff < 0 %}
-                            {% set row_class = 'table-danger' %}
-                            {% set alert_badge = '<span class="badge bg-danger ms-2">Vencido</span>' %}
-                        {% elif days_diff <= 30 %}
-                            {% set row_class = 'table-warning' %}
-                            {% set alert_badge = '<span class="badge bg-warning text-dark ms-2">Vence pronto</span>' %}
-                        {% endif %}
-                    {% endif %}
-                <tr class="{{ row_class }}">
-                    <td class="text-center">{{ loop.index }}</td>
-                    <td>{{ item.nombre_tipo }} {{ alert_badge|safe }}</td>
-                    <td>{{ item.descripcion or 'Sin descripción' }}</td>
-                    <td class="text-center">{{ item.fecha_emision.strftime('%d/%m/%Y') if item.fecha_emision else item.fecha_subida.strftime('%d/%m/%Y') }}</td>
-                    <td class="text-center">
-                        <a href="{{ url_for('legajo.visualizar_documento', documento_id=item.id_documento) }}"
-                           target="_blank"
-                           class="btn btn-sm btn-outline-info"
-                           title="Visualizar Documento: {{ item.nombre_archivo }}">
-                            <i class="bi bi-eye-fill"></i>
-                        </a>
-                        {% if current_user.rol == 'AdministradorLegajos' %}
-                            <button type="button" class="btn btn-sm btn-outline-danger"
-                                    data-bs-toggle="modal"
-                                    data-bs-target="#confirmDeleteModal"
-                                    data-doc-id="{{ item.id_documento }}"
-                                    data-doc-name="{{ item.nombre_archivo }}"
-                                    title="Eliminar Documento">
-                                <i class="bi bi-trash-fill"></i>
-                            </button>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-    {% else %}
-    <div class="alert alert-light text-center" role="alert">
-        <i class="bi bi-info-circle me-2"></i>No hay documentos registrados en esta categoría.
-    </div>
-    {% endif %}
+<h5 class="mt-4 mb-3"><i class="bi bi-collection-fill me-2"></i>{{ title }}</h5>
+{% if items %}
+<div class="table-responsive">
+  <table class="table table-bordered table-sm table-hover align-middle">
+    <thead class="table-light">
+      <tr class="text-center">
+        <th style="width: 5%;">#</th>
+        <th style="width: 30%;">Tipo de Documento</th>
+        <th>Descripción / Contenido</th>
+        <th style="width: 15%;">Fecha</th>
+        <th style="width: 15%;">Acciones</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in items %}
+      {% set row_class = '' %}
+      {% set alert_badge = '' %}
+      {% if item.fecha_vencimiento and today %}
+      {% set days_diff = (item.fecha_vencimiento - today).days %}
+      {% if days_diff < 0 %} {% set row_class='table-danger' %} {% set
+        alert_badge='<span class="badge bg-danger ms-2">Vencido</span>' %} {% elif days_diff <=30 %} {% set
+        row_class='table-warning' %} {% set
+        alert_badge='<span class="badge bg-warning text-dark ms-2">Vence pronto</span>' %} {% endif %} {% endif %} <tr
+        class="{{ row_class }}">
+        <td class="text-center">{{ loop.index }}</td>
+        <td>{{ item.nombre_tipo }} {{ alert_badge|safe }}</td>
+        <td>{{ item.descripcion or 'Sin descripción' }}</td>
+        <td class="text-center">{{ item.fecha_emision.strftime('%d/%m/%Y') if item.fecha_emision else
+          item.fecha_subida.strftime('%d/%m/%Y') }}</td>
+        <td class="text-center">
+          <a href="{{ url_for('legajo.visualizar_documento', documento_id=item.id_documento) }}" target="_blank"
+            class="btn btn-sm btn-outline-info" title="Visualizar Documento: {{ item.nombre_archivo }}">
+            <i class="bi bi-eye-fill"></i>
+          </a>
+          {% if current_user.rol == 'AdministradorLegajos' %}
+          <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal"
+            data-bs-target="#confirmDeleteModal" data-doc-id="{{ item.id_documento }}"
+            data-doc-name="{{ item.nombre_archivo }}" title="Eliminar Documento">
+            <i class="bi bi-trash-fill"></i>
+          </button>
+          {% endif %}
+        </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="alert alert-light text-center" role="alert">
+  <i class="bi bi-info-circle me-2"></i>No hay documentos registrados en esta categoría.
+</div>
+{% endif %}
 {% endmacro %}
 
 
 {% block dashboard_content %}
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <div>
-            <h1 class="h3 mb-1">Legajo Completo de: {{ legajo.personal.nombres }} {{ legajo.personal.apellidos }}</h1>
-            <span class="badge bg-secondary">DNI: {{ legajo.personal.dni }}</span>
-        </div>
-        <div class="d-flex gap-2">
-            {% if current_user.rol == 'AdministradorLegajos' %}
-                <button type="button" class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#cargarPDFModal">
-                    <i class="bi bi-file-pdf-fill me-1"></i> Cargar PDF
-                </button>
-            {% endif %}
-            <a href="{{ url_for('legajo.listar_personal') }}" class="btn btn-secondary"><i class="bi bi-arrow-left-circle me-1"></i> Volver a la Lista</a>
-        </div>
-    </div>
-
-    <div class="card shadow-sm mb-4">
-        <div class="card-header bg-primary text-white">
-            <h6 class="m-0 font-weight-bold"><i class="bi bi-person-badge-fill me-2"></i>Información Principal</h6>
-        </div>
-        <div class="card-body">
-            <div class="row">
-                <div class="col-md-6">
-                    <dl class="row">
-                        <dt class="col-sm-4">Nombres:</dt>
-                        <dd class="col-sm-8">{{ legajo.personal.nombres }}</dd>
-                        <dt class="col-sm-4">Apellidos:</dt>
-                        <dd class="col-sm-8">{{ legajo.personal.apellidos }}</dd>
-                        <dt class="col-sm-4">Fecha de Nac.:</dt>
-                        <dd class="col-sm-8">{{ legajo.personal.fecha_nacimiento.strftime('%d/%m/%Y') if legajo.personal.fecha_nacimiento else 'No registrado' }}</dd>
-                    </dl>
-                </div>
-                <div class="col-md-6">
-                    <dl class="row">
-                        <dt class="col-sm-4">Correo:</dt>
-                        <dd class="col-sm-8">{{ legajo.personal.email or 'No registrado' }}</dd>
-                        <dt class="col-sm-4">Teléfono:</dt>
-                        <dd class="col-sm-8">{{ legajo.personal.telefono or 'No registrado' }}</dd>
-                        <dt class="col-sm-4">Dirección:</dt>
-                        <dd class="col-sm-8">{{ legajo.personal.direccion or 'No registrado' }}</dd>
-                    </dl>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <h4 class="mb-3">Secciones del Legajo</h4>
-    <div class="accordion" id="accordionLegajo">
-        {% for seccion in legajo_service.get_secciones_for_select() %}
-            {% set seccion_id = seccion[0]|int %}
-            {% set seccion_nombre = seccion[1] %}
-            {% set documents_in_section = legajo.documentos|selectattr('id_seccion', 'equalto', seccion_id)|list %}
-            <div class="accordion-item">
-                <h2 class="accordion-header">
-                    <button class="accordion-button {% if not loop.first %}collapsed{% endif %}" type="button" data-bs-toggle="collapse" data-bs-target="#collapse{{ seccion_id }}">
-                        {{ seccion_nombre }}
-                        <span class="badge rounded-pill bg-primary ms-auto me-2">{{ documents_in_section|length }} Doc(s)</span>
-                    </button>
-                </h2>
-                <div id="collapse{{ seccion_id }}" class="accordion-collapse collapse {% if loop.first %}show{% endif %}" data-bs-parent="#accordionLegajo">
-                    <div class="accordion-body">
-                        {{ render_table(documents_in_section, 'Documentos Registrados') }}
-                    </div>
-                </div>
-            </div>
-        {% endfor %}
-    </div>
-
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h1 class="h3 mb-1">Legajo Completo de: {{ legajo.personal.nombres }} {{ legajo.personal.apellidos }}</h1>
+    <span class="badge bg-secondary">DNI: {{ legajo.personal.dni }}</span>
+  </div>
+  <div class="d-flex gap-2">
     {% if current_user.rol == 'AdministradorLegajos' %}
-    <div class="card shadow-sm mt-4">
-        <div class="card-header fw-bold text-white bg-success">
-            <i class="bi bi-cloud-arrow-up-fill me-2"></i>Añadir Documento al Legajo
-        </div>
-        <div class="card-body">
-            {# Aquí se incluirán los mensajes de error o éxito #}
-            {% include 'components/_alerts.html' %}
-            
-            <form id="uploadDocForm" action="{{ url_for('legajo.subir_documento', personal_id=legajo.personal.id_personal) }}" method="POST" enctype="multipart/form-data" novalidate>
-                {{ form_documento.hidden_tag() }}
-                <div class="row">
-                    <div class="col-md-6">{{ render_field(form_documento.id_seccion, id='seccion_select', **{'data-tipos-url': url_for('legajo.api_tipos_documento_por_seccion', id_seccion=0)}) }}</div>
-                    <div class="col-md-6">{{ render_field(form_documento.id_tipo, id='tipo_doc_select') }}</div>
-                </div>
-                {{ render_field(form_documento.descripcion) }}
-                {{ render_field(form_documento.archivo, accept=".pdf,.png,.jpg,.jpeg,.docx,.xlsx") }}
-                <div class="form-text mt-1">
-                    Archivos permitidos: PDF, PNG, JPG, DOCX, XLSX. Tamaño máximo: 16 MB.
-                </div>
-                <div class="mt-3">
-                    <button type="submit" class="btn btn-success" data-disable-on-submit>
-                        <i class="bi bi-plus-lg me-1"></i> Añadir Documento
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- CARGAR PDF COMPLETO DEL LEGAJO -->
-    <div class="card shadow-sm mt-4">
-        <div class="card-header fw-bold text-white bg-warning">
-            <i class="bi bi-file-pdf-fill me-2"></i>Cargar PDF Completo del Legajo
-        </div>
-        <div class="card-body">
-            <form id="formCargarPDF" enctype="multipart/form-data" method="POST" action="{{ url_for('pdf.upload_legajo_pdf', personal_id=legajo.personal.id_personal) }}" data-personal-id="{{ legajo.personal.id_personal }}">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-              <input type="hidden" id="estructura_json" name="estructura_json" value='{"01_DNI": {"id_seccion": 1, "tipo_documento": "DNI", "descripcion": "Cédula de Identidad", "pagina_inicio": 1, "pagina_fin": 1}, "02_Curriculum": {"id_seccion": 2, "tipo_documento": "Curriculum", "descripcion": "Currículum Vitae", "pagina_inicio": 2, "pagina_fin": 5}, "03_Titulo_Universitario": {"id_seccion": 3, "tipo_documento": "Titulo", "descripcion": "Título Universitario", "pagina_inicio": 6, "pagina_fin": 6}, "04_Contrato_Laboral": {"id_seccion": 4, "tipo_documento": "Contrato", "descripcion": "Contrato Laboral", "pagina_inicio": 7, "pagina_fin": 12}, "05_Antecedentes_Penales": {"id_seccion": 5, "tipo_documento": "Antecedentes", "descripcion": "Antecedentes Penales", "pagina_inicio": 13, "pagina_fin": 14}, "06_Carnet_Sanitario": {"id_seccion": 6, "tipo_documento": "Carnet", "descripcion": "Carnet Sanitario", "pagina_inicio": 15, "pagina_fin": 15}, "07_Licencias": {"id_seccion": 7, "tipo_documento": "Licencias", "descripcion": "Licencias Profesionales", "pagina_inicio": 16, "pagina_fin": 20}}'>
-              
-              <!-- Información del Personal -->
-              <div class="alert alert-info mb-3">
-                <strong><i class="bi bi-person-fill me-2"></i>Personal:</strong>
-                {{ legajo.personal.apellidos }}, {{ legajo.personal.nombres }}
-                <br/>
-                <strong>DNI:</strong> {{ legajo.personal.dni }}
-              </div>
-
-              <!-- Estructura del Legajo -->
-              <div class="mb-3">
-                <label class="form-label"><strong>Estructura del Legajo</strong></label>
-                
-                <!-- Vista Actual -->
-                <div class="table-responsive mb-3">
-                  <table class="table table-sm table-hover">
-                    <thead class="table-light">
-                      <tr>
-                        <th>Sección</th>
-                        <th>Tipo Documento</th>
-                        <th>Descripción</th>
-                        <th>Páginas</th>
-                      </tr>
-                    </thead>
-                    <tbody id="estructuraBody">
-                    </tbody>
-                  </table>
-                </div>
-
-                <!-- Botón para mostrar/ocultar edición -->
-                <button type="button" class="btn btn-sm btn-outline-primary mb-3" id="btnPersonalizar" data-action="show">
-                  <i class="bi bi-pencil me-1"></i>Personalizar Estructura
-                </button>
-
-                <!-- Edición de Estructura (oculta por defecto) -->
-                <div id="editarEstructura" class="d-none border rounded p-3 mb-3 bg-light">
-                  <p class="text-muted small"><i class="bi bi-info-circle"></i> Modifica la estructura según sea necesario para este personal</p>
-                  <div id="formularioEstructura">
-                    <!-- Se rellenará dinámicamente -->
-                  </div>
-                  <div class="d-flex gap-2 justify-content-end mt-3">
-                    <button type="button" class="btn btn-sm btn-secondary" id="btnCancelarPersonalizacion">
-                      Cancelar
-                    </button>
-                    <button type="button" class="btn btn-sm btn-primary" id="btnGuardarPersonalizacion">
-                      <i class="bi bi-check-lg me-1"></i>Guardar Cambios
-                    </button>
-                  </div>
-                </div>
-
-                <small class="text-muted d-block mt-2">El PDF será dividido automáticamente según esta estructura</small>
-              </div>
-
-              <!-- Selector de Archivo -->
-              <div class="mb-3">
-                <label for="archivo_pdf" class="form-label"><strong>Selecciona el archivo PDF</strong> <span class="text-danger">*</span></label>
-                <input type="file" class="form-control" id="archivo_pdf" name="archivo_pdf" accept=".pdf" required>
-                <small class="text-muted">Máximo 100 MB. Solo archivos PDF.</small>
-              </div>
-
-              <!-- Botones -->
-              <div class="d-flex gap-2 justify-content-end">
-                <button type="reset" class="btn btn-secondary">
-                  <i class="bi bi-arrow-counterclockwise me-1"></i>Limpiar
-                </button>
-                <button type="submit" class="btn btn-warning">
-                  <i class="bi bi-upload me-1"></i>Cargar PDF
-                </button>
-              </div>
-            </form>
-        </div>
-    </div>
+    <button type="button" class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#cargarPDFModal">
+      <i class="bi bi-file-pdf-fill me-1"></i> Cargar PDF
+    </button>
     {% endif %}
+    <a href="{{ url_for('legajo.listar_personal') }}" class="btn btn-secondary"><i
+        class="bi bi-arrow-left-circle me-1"></i> Volver a la Lista</a>
+  </div>
+</div>
 
-    <div class="modal fade" id="confirmDeleteModal" tabindex="-1">
-      <div class="modal-dialog">
-        <div class="modal-content">
-          <div class="modal-header bg-danger text-white">
-            <h5 class="modal-title">Confirmar Eliminación</h5>
-            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-          </div>
-          <div class="modal-body">
-            <p>¿Está seguro de que desea eliminar el documento <strong id="docNameToDelete" class="text-danger"></strong>?</p>
-            <p class="text-muted small"><strong>Advertencia:</strong> Esta acción marcará el documento como eliminado.</p>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-            <form id="deleteDocForm" method="POST" action="">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button type="submit" class="btn btn-danger">Sí, eliminar</button>
-            </form>
-          </div>
-        </div>
+<div class="card shadow-sm mb-4">
+  <div class="card-header bg-primary text-white">
+    <h6 class="m-0 font-weight-bold"><i class="bi bi-person-badge-fill me-2"></i>Información Principal</h6>
+  </div>
+  <div class="card-body">
+    <div class="row">
+      <div class="col-md-6">
+        <dl class="row">
+          <dt class="col-sm-4">Nombres:</dt>
+          <dd class="col-sm-8">{{ legajo.personal.nombres }}</dd>
+          <dt class="col-sm-4">Apellidos:</dt>
+          <dd class="col-sm-8">{{ legajo.personal.apellidos }}</dd>
+          <dt class="col-sm-4">Fecha de Nac.:</dt>
+          <dd class="col-sm-8">{{ legajo.personal.fecha_nacimiento.strftime('%d/%m/%Y') if
+            legajo.personal.fecha_nacimiento else 'No registrado' }}</dd>
+        </dl>
+      </div>
+      <div class="col-md-6">
+        <dl class="row">
+          <dt class="col-sm-4">Correo:</dt>
+          <dd class="col-sm-8">{{ legajo.personal.email or 'No registrado' }}</dd>
+          <dt class="col-sm-4">Teléfono:</dt>
+          <dd class="col-sm-8">{{ legajo.personal.telefono or 'No registrado' }}</dd>
+          <dt class="col-sm-4">Dirección:</dt>
+          <dd class="col-sm-8">{{ legajo.personal.direccion or 'No registrado' }}</dd>
+        </dl>
       </div>
     </div>
+  </div>
+</div>
+
+<h4 class="mb-3">Secciones del Legajo</h4>
+<div class="accordion" id="accordionLegajo">
+  {% for seccion in legajo_service.get_secciones_for_select() %}
+  {% set seccion_id = seccion[0]|int %}
+  {% set seccion_nombre = seccion[1] %}
+  {% set documents_in_section = legajo.documentos|selectattr('id_seccion', 'equalto', seccion_id)|list %}
+  <div class="accordion-item">
+    <h2 class="accordion-header">
+      <button class="accordion-button {% if not loop.first %}collapsed{% endif %}" type="button"
+        data-bs-toggle="collapse" data-bs-target="#collapse{{ seccion_id }}">
+        {{ seccion_nombre }}
+        <span class="badge rounded-pill bg-primary ms-auto me-2">{{ documents_in_section|length }} Doc(s)</span>
+      </button>
+    </h2>
+    <div id="collapse{{ seccion_id }}" class="accordion-collapse collapse {% if loop.first %}show{% endif %}"
+      data-bs-parent="#accordionLegajo">
+      <div class="accordion-body">
+        {{ render_table(documents_in_section, 'Documentos Registrados') }}
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{% if current_user.rol == 'AdministradorLegajos' %}
+<div class="card shadow-sm mt-4">
+  <div class="card-header fw-bold text-white bg-success">
+    <i class="bi bi-cloud-arrow-up-fill me-2"></i>Añadir Documento al Legajo
+  </div>
+  <div class="card-body">
+    {# Aquí se incluirán los mensajes de error o éxito #}
+    {% include 'components/_alerts.html' %}
+
+    <form id="uploadDocForm" action="{{ url_for('legajo.subir_documento', personal_id=legajo.personal.id_personal) }}"
+      method="POST" enctype="multipart/form-data" novalidate>
+      {{ form_documento.hidden_tag() }}
+      <div class="row">
+        <div class="col-md-6">{{ render_field(form_documento.id_seccion, id='seccion_select', **{'data-tipos-url':
+          url_for('legajo.api_tipos_documento_por_seccion', id_seccion=0)}) }}</div>
+        <div class="col-md-6">{{ render_field(form_documento.id_tipo, id='tipo_doc_select') }}</div>
+      </div>
+      <div class="row">
+        <div class="col-md-8">{{ render_field(form_documento.descripcion) }}</div>
+        <div class="col-md-4">
+          {{ render_field(form_documento.fecha_emision) }}
+          <small class="text-muted">Si no se especifica, se usará la fecha de hoy.</small>
+        </div>
+      </div>
+      {{ render_field(form_documento.archivo, accept=".pdf,.png,.jpg,.jpeg,.docx,.xlsx") }}
+      <div class="form-text mt-1">
+        Archivos permitidos: PDF, PNG, JPG, DOCX, XLSX. Tamaño máximo: 16 MB.
+      </div>
+      <div class="mt-3">
+        <button type="submit" class="btn btn-success" data-disable-on-submit>
+          <i class="bi bi-plus-lg me-1"></i> Añadir Documento
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- CARGAR PDF COMPLETO DEL LEGAJO -->
+<div class="card shadow-sm mt-4">
+  <div class="card-header fw-bold text-white bg-warning">
+    <i class="bi bi-file-pdf-fill me-2"></i>Cargar PDF Completo del Legajo
+  </div>
+  <div class="card-body">
+    <form id="formCargarPDF" enctype="multipart/form-data" method="POST"
+      action="{{ url_for('pdf.upload_legajo_pdf', personal_id=legajo.personal.id_personal) }}"
+      data-personal-id="{{ legajo.personal.id_personal }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+      <input type="hidden" id="estructura_json" name="estructura_json"
+        value='{"01": {"id_seccion": 1, "tipo_documento": "DNI", "descripcion": "", "pagina_inicio": 1, "pagina_fin": 1}, "02": {"id_seccion": 2, "tipo_documento": "Curriculum", "descripcion": "Currículum Vitae", "pagina_inicio": 2, "pagina_fin": 5}, "03": {"id_seccion": 3, "tipo_documento": "Titulo", "descripcion": "Título Universitario", "pagina_inicio": 6, "pagina_fin": 6}, "04": {"id_seccion": 4, "tipo_documento": "Contrato", "descripcion": "Contrato Laboral", "pagina_inicio": 7, "pagina_fin": 12}, "05": {"id_seccion": 5, "tipo_documento": "Antecedentes", "descripcion": "Antecedentes Penales", "pagina_inicio": 13, "pagina_fin": 14}, "06": {"id_seccion": 6, "tipo_documento": "Carnet", "descripcion": "Carnet Sanitario", "pagina_inicio": 15, "pagina_fin": 15}, "07": {"id_seccion": 7, "tipo_documento": "Licencias", "descripcion": "Licencias Profesionales", "pagina_inicio": 16, "pagina_fin": 20}}'>
+
+      <!-- Información del Personal -->
+      <div class="alert alert-info mb-3">
+        <strong><i class="bi bi-person-fill me-2"></i>Personal:</strong>
+        {{ legajo.personal.apellidos }}, {{ legajo.personal.nombres }}
+        <br />
+        <strong>DNI:</strong> {{ legajo.personal.dni }}
+      </div>
+
+      <!-- Estructura del Legajo -->
+      <div class="mb-3">
+        <label class="form-label"><strong>Estructura del Legajo</strong></label>
+
+        <!-- Vista Actual -->
+        <div class="table-responsive mb-3">
+          <table class="table table-sm table-hover">
+            <thead class="table-light">
+              <tr>
+                <th>Sección</th>
+                <th>Tipo Documento</th>
+                <th>Descripción</th>
+                <th>Páginas</th>
+              </tr>
+            </thead>
+            <tbody id="estructuraBody">
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Botón para mostrar/ocultar edición -->
+        <button type="button" class="btn btn-sm btn-outline-primary mb-3" id="btnPersonalizar" data-action="show">
+          <i class="bi bi-pencil me-1"></i>Personalizar Estructura
+        </button>
+
+        <!-- Edición de Estructura (oculta por defecto) -->
+        <div id="editarEstructura" class="d-none border rounded p-3 mb-3 bg-light">
+          <p class="text-muted small"><i class="bi bi-info-circle"></i> Modifica la estructura según sea necesario para
+            este personal</p>
+          <div id="formularioEstructura">
+            <!-- Se rellenará dinámicamente -->
+          </div>
+          <div class="d-flex gap-2 justify-content-end mt-3">
+            <button type="button" class="btn btn-sm btn-secondary" id="btnCancelarPersonalizacion">
+              Cancelar
+            </button>
+            <button type="button" class="btn btn-sm btn-primary" id="btnGuardarPersonalizacion">
+              <i class="bi bi-check-lg me-1"></i>Guardar Cambios
+            </button>
+          </div>
+        </div>
+
+        <small class="text-muted d-block mt-2">El PDF será dividido automáticamente según esta estructura</small>
+      </div>
+
+      <!-- Fecha de Emisión de los Documentos -->
+      <div class="mb-3">
+        <label for="fecha_emision_pdf" class="form-label"><strong>Fecha de Emisión de los Documentos</strong></label>
+        <input type="date" class="form-control" id="fecha_emision_pdf" name="fecha_emision"
+          value="{{ today.strftime('%Y-%m-%d') if today else '' }}">
+        <small class="text-muted">
+          <i class="bi bi-info-circle me-1"></i>
+          Esta fecha se aplicará a todos los documentos extraídos del PDF.
+          Útil para registrar legajos antiguos con su fecha original.
+        </small>
+      </div>
+
+      <!-- Selector de Archivo -->
+      <div class="mb-3">
+        <label for="archivo_pdf" class="form-label"><strong>Selecciona el archivo PDF</strong> <span
+            class="text-danger">*</span></label>
+        <input type="file" class="form-control" id="archivo_pdf" name="archivo_pdf" accept=".pdf" required>
+        <small class="text-muted">Máximo 100 MB. Solo archivos PDF.</small>
+      </div>
+
+      <!-- Botones -->
+      <div class="d-flex gap-2 justify-content-end">
+        <button type="reset" class="btn btn-secondary">
+          <i class="bi bi-arrow-counterclockwise me-1"></i>Limpiar
+        </button>
+        <button type="submit" class="btn btn-warning">
+          <i class="bi bi-upload me-1"></i>Cargar PDF
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<div class="modal fade" id="confirmDeleteModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header bg-danger text-white">
+        <h5 class="modal-title">Confirmar Eliminación</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p>¿Está seguro de que desea eliminar el documento <strong id="docNameToDelete" class="text-danger"></strong>?
+        </p>
+        <p class="text-muted small"><strong>Advertencia:</strong> Esta acción marcará el documento como eliminado.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <form id="deleteDocForm" method="POST" action="">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-danger">Sí, eliminar</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 
 {% block scripts %}
-    {{ super() }}
-    <script src="{{ url_for('static', filename='js/estructura_pdf.js') }}"></script>
-    <script nonce="{{ csp_nonce() }}">
-    // Capturar el submit del formulario para incluir la estructura actual
-    // Se ejecuta cuando esté listo, después de que estructura_pdf.js haya cargado
-    function setupFormSubmit() {
-      console.log('[DEBUG] setupFormSubmit() REGISTRANDO evento submit');
-      const formCargarPDF = document.getElementById('formCargarPDF');
-      if (!formCargarPDF) {
-        console.error('[DEBUG] formCargarPDF no encontrado');
+{{ super() }}
+<script src="{{ url_for('static', filename='js/estructura_pdf.js') }}"></script>
+<script nonce="{{ csp_nonce() }}">
+  // Capturar el submit del formulario para incluir la estructura actual
+  // Se ejecuta cuando esté listo, después de que estructura_pdf.js haya cargado
+  function setupFormSubmit() {
+    console.log('[DEBUG] setupFormSubmit() REGISTRANDO evento submit');
+    const formCargarPDF = document.getElementById('formCargarPDF');
+    if (!formCargarPDF) {
+      console.error('[DEBUG] formCargarPDF no encontrado');
+      return;
+    }
+
+    // REMOVER listeners anteriores para evitar duplicados
+    const newForm = formCargarPDF.cloneNode(true);
+    formCargarPDF.parentNode.replaceChild(newForm, formCargarPDF);
+
+    // Registrar nuevo listener
+    newForm.addEventListener('submit', function (e) {
+      console.log('[DEBUG] ===== EVENTO SUBMIT CAPTURADO =====');
+      const estructuraJson = document.getElementById('estructura_json');
+
+      console.log('[DEBUG] typeof ESTRUCTURA_DEFAULT:', typeof ESTRUCTURA_DEFAULT);
+      if (typeof ESTRUCTURA_DEFAULT === 'undefined') {
+        console.error('[DEBUG] ESTRUCTURA_DEFAULT no está definida');
+        alert('Error: Estructura no cargada. Por favor, recarga la página.');
+        e.preventDefault();
         return;
       }
-      
-      // REMOVER listeners anteriores para evitar duplicados
-      const newForm = formCargarPDF.cloneNode(true);
-      formCargarPDF.parentNode.replaceChild(newForm, formCargarPDF);
-      
-      // Registrar nuevo listener
-      newForm.addEventListener('submit', function(e) {
-        console.log('[DEBUG] ===== EVENTO SUBMIT CAPTURADO =====');
-        const estructuraJson = document.getElementById('estructura_json');
-        
-        console.log('[DEBUG] typeof ESTRUCTURA_DEFAULT:', typeof ESTRUCTURA_DEFAULT);
-        if (typeof ESTRUCTURA_DEFAULT === 'undefined') {
-          console.error('[DEBUG] ESTRUCTURA_DEFAULT no está definida');
-          alert('Error: Estructura no cargada. Por favor, recarga la página.');
-          e.preventDefault();
-          return;
-        }
-        
-        // SIEMPRE serializar ESTRUCTURA_DEFAULT actual, no confiar en valor previo
-        const estructuraSerializada = JSON.stringify(ESTRUCTURA_DEFAULT);
-        
-        console.log('[DEBUG] Estado de ESTRUCTURA_DEFAULT:');
-        console.log('[DEBUG]   Elementos:', Object.keys(ESTRUCTURA_DEFAULT));
-        console.log('[DEBUG]   JSON completo:', estructuraSerializada);
-        console.log('[DEBUG]   Tamaño:', estructuraSerializada.length, 'bytes');
-        
-        // Mostrar cada sección y su id_seccion
-        Object.entries(ESTRUCTURA_DEFAULT).forEach(([key, val]) => {
-          console.log(`[DEBUG]   ${key}: id_seccion=${val.id_seccion}`);
-        });
-        
-        if (!estructuraSerializada || estructuraSerializada === '{}') {
-          console.error('[DEBUG] ESTRUCTURA_DEFAULT está vacía o inválida');
-          alert('Error: La estructura está vacía');
-          e.preventDefault();
-          return;
-        }
-        
-        // ACTUALIZAR el campo JUSTO ANTES de enviar
-        estructuraJson.value = estructuraSerializada;
-        console.log('[DEBUG] Campo estructura_json ACTUALIZADO JUSTO AHORA');
-        console.log('[DEBUG] Valor final a enviar:', estructuraJson.value.substring(0, 100) + '...');
-        console.log('[DEBUG] ===== ENVIANDO FORMULARIO AHORA =====');
-        // Permitir que el formulario se envíe normalmente
+
+      // SIEMPRE serializar ESTRUCTURA_DEFAULT actual, no confiar en valor previo
+      const estructuraSerializada = JSON.stringify(ESTRUCTURA_DEFAULT);
+
+      console.log('[DEBUG] Estado de ESTRUCTURA_DEFAULT:');
+      console.log('[DEBUG]   Elementos:', Object.keys(ESTRUCTURA_DEFAULT));
+      console.log('[DEBUG]   JSON completo:', estructuraSerializada);
+      console.log('[DEBUG]   Tamaño:', estructuraSerializada.length, 'bytes');
+
+      // Mostrar cada sección y su id_seccion
+      Object.entries(ESTRUCTURA_DEFAULT).forEach(([key, val]) => {
+        console.log(`[DEBUG]   ${key}: id_seccion=${val.id_seccion}`);
       });
-    }
-    
-    // Ejecutar después de que todo se haya cargado
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', setupFormSubmit);
-    } else {
-      setupFormSubmit();
-    }
-    </script>
+
+      if (!estructuraSerializada || estructuraSerializada === '{}') {
+        console.error('[DEBUG] ESTRUCTURA_DEFAULT está vacía o inválida');
+        alert('Error: La estructura está vacía');
+        e.preventDefault();
+        return;
+      }
+
+      // ACTUALIZAR el campo JUSTO ANTES de enviar
+      estructuraJson.value = estructuraSerializada;
+      console.log('[DEBUG] Campo estructura_json ACTUALIZADO JUSTO AHORA');
+      console.log('[DEBUG] Valor final a enviar:', estructuraJson.value.substring(0, 100) + '...');
+      console.log('[DEBUG] ===== ENVIANDO FORMULARIO AHORA =====');
+      // Permitir que el formulario se envíe normalmente
+    });
+  }
+
+  // Ejecutar después de que todo se haya cargado
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', setupFormSubmit);
+  } else {
+    setupFormSubmit();
+  }
+</script>
 {% endblock %}

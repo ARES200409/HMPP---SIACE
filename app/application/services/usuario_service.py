@@ -166,6 +166,16 @@ class UsuarioService:
             logger.error(f"Error al actualizar el correo electrónico del usuario {user_id}: {e}")
             return "Error al actualizar el correo electrónico. Por favor intenta de nuevo.", "danger"
 
+    def update_foto_perfil(self, user_id, foto_filename):
+        """Actualiza la foto de perfil de un usuario."""
+        try:
+            self._usuario_repo.update_foto_perfil(user_id, foto_filename)
+            logger.info(f"Foto de perfil del usuario {user_id} actualizada a {foto_filename}")
+            return "La foto de perfil ha sido actualizada correctamente.", "success"
+        except Exception as e:
+            logger.error(f"Error al actualizar la foto de perfil del usuario {user_id}: {e}")
+            return "Error al actualizar la foto de perfil. Por favor intenta de nuevo.", "danger"
+
     def create_user(self, user_data):
         """
         Crea un nuevo usuario en el sistema con validaciones.

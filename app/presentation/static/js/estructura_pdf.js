@@ -1,12 +1,12 @@
 // Estructura default con nuevos campos
 let ESTRUCTURA_DEFAULT = {
-  "01_DNI": {"id_seccion": 1, "tipo_documento": "DNI", "descripcion": "Cédula de Identidad", "pagina_inicio": 1, "pagina_fin": 1},
-  "02_Curriculum": {"id_seccion": 2, "tipo_documento": "Curriculum", "descripcion": "Currículum Vitae", "pagina_inicio": 2, "pagina_fin": 5},
-  "03_Titulo_Universitario": {"id_seccion": 3, "tipo_documento": "Titulo", "descripcion": "Título Universitario", "pagina_inicio": 6, "pagina_fin": 6},
-  "04_Contrato_Laboral": {"id_seccion": 4, "tipo_documento": "Contrato", "descripcion": "Contrato Laboral", "pagina_inicio": 7, "pagina_fin": 12},
-  "05_Antecedentes_Penales": {"id_seccion": 5, "tipo_documento": "Antecedentes", "descripcion": "Antecedentes Penales", "pagina_inicio": 13, "pagina_fin": 14},
-  "06_Carnet_Sanitario": {"id_seccion": 6, "tipo_documento": "Carnet", "descripcion": "Carnet Sanitario", "pagina_inicio": 15, "pagina_fin": 15},
-  "07_Licencias": {"id_seccion": 7, "tipo_documento": "Licencias", "descripcion": "Licencias Profesionales", "pagina_inicio": 16, "pagina_fin": 20}
+  "01": { "id_seccion": 1, "tipo_documento": "DNI", "descripcion": "Cédula de Identidad", "pagina_inicio": 1, "pagina_fin": 1 },
+  "02": { "id_seccion": 2, "tipo_documento": "Curriculum", "descripcion": "Currículum Vitae", "pagina_inicio": 2, "pagina_fin": 5 },
+  "03": { "id_seccion": 3, "tipo_documento": "Titulo", "descripcion": "Título Universitario", "pagina_inicio": 6, "pagina_fin": 6 },
+  "04": { "id_seccion": 4, "tipo_documento": "Contrato", "descripcion": "Contrato Laboral", "pagina_inicio": 7, "pagina_fin": 12 },
+  "05": { "id_seccion": 5, "tipo_documento": "Antecedentes", "descripcion": "Antecedentes Penales", "pagina_inicio": 13, "pagina_fin": 14 },
+  "06": { "id_seccion": 6, "tipo_documento": "Carnet", "descripcion": "Carnet Sanitario", "pagina_inicio": 15, "pagina_fin": 15 },
+  "07": { "id_seccion": 7, "tipo_documento": "Licencias", "descripcion": "Licencias Profesionales", "pagina_inicio": 16, "pagina_fin": 20 }
 };
 
 // Función segura para escapar HTML y prevenir XSS
@@ -24,17 +24,17 @@ function escapeHtml(text) {
 // Cache de secciones cargadas una sola vez
 let seccionesCache = null;
 
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function () {
   cargarSecciones().then(async () => {
     // Cargar estructura personalizada desde BD si existe
     await cargarEstructuraDesdeServidor();
-    
+
     // IMPORTANTE: Actualizar el campo del formulario con la estructura
     const estructuraJsonField = document.getElementById('estructura_json');
     if (estructuraJsonField) {
       estructuraJsonField.value = JSON.stringify(ESTRUCTURA_DEFAULT);
     }
-    
+
     cargarEstructura();
     setupEventListeners();
   });
@@ -49,14 +49,14 @@ function cargarEstructuraDesdeServidor() {
         resolve();
         return;
       }
-      
+
       const id_personal = formCargarPDF.getAttribute('data-personal-id');
-      
+
       if (!id_personal) {
         resolve();
         return;
       }
-      
+
       // CORRECCIÓN: Ruta apuntando al Blueprint 'pdf_bp' correcto
       fetch(`/pdf/api/estructura-personal/${id_personal}`)
         .then(response => {
@@ -77,7 +77,7 @@ function cargarEstructuraDesdeServidor() {
           // Fallback silencioso a la estructura por defecto
           resolve();
         });
-      
+
     } catch (error) {
       resolve();
     }
@@ -88,18 +88,18 @@ function cargarEstructuraGuardada() {
   try {
     const formCargarPDF = document.getElementById('formCargarPDF');
     if (!formCargarPDF) return;
-    
+
     const id_personal = formCargarPDF.getAttribute('data-personal-id');
     if (!id_personal) return;
-    
+
     const storageName = `estructura_${id_personal}`;
-    
+
     const estructuraGuardada = localStorage.getItem(storageName);
-    
+
     if (estructuraGuardada) {
       try {
         const parsed = JSON.parse(estructuraGuardada);
-        
+
         // Validar estructura antes de aplicar
         let estructuraValida = true;
         for (const [key, val] of Object.entries(parsed)) {
@@ -108,14 +108,14 @@ function cargarEstructuraGuardada() {
             break;
           }
         }
-        
+
         if (!estructuraValida) {
           localStorage.removeItem(storageName);
           return;
         }
-        
+
         Object.assign(ESTRUCTURA_DEFAULT, parsed);
-        
+
       } catch (e) {
         localStorage.removeItem(storageName);
       }
@@ -144,17 +144,17 @@ function setupEventListeners() {
   const editarEstructura = document.getElementById('editarEstructura');
 
   if (btnPersonalizar) {
-    btnPersonalizar.addEventListener('click', function(e) {
+    btnPersonalizar.addEventListener('click', function (e) {
       e.preventDefault();
       editarEstructura.classList.toggle('d-none');
-      btnPersonalizar.innerHTML = editarEstructura.classList.contains('d-none') 
+      btnPersonalizar.innerHTML = editarEstructura.classList.contains('d-none')
         ? '<i class="bi bi-pencil me-1"></i>Personalizar Estructura'
         : '<i class="bi bi-x me-1"></i>Ocultar Edición';
     });
   }
 
   if (btnCancelarPersonalizacion) {
-    btnCancelarPersonalizacion.addEventListener('click', function(e) {
+    btnCancelarPersonalizacion.addEventListener('click', function (e) {
       e.preventDefault();
       editarEstructura.classList.add('d-none');
       btnPersonalizar.innerHTML = '<i class="bi bi-pencil me-1"></i>Personalizar Estructura';
@@ -163,7 +163,7 @@ function setupEventListeners() {
   }
 
   if (btnGuardarPersonalizacion) {
-    btnGuardarPersonalizacion.addEventListener('click', function(e) {
+    btnGuardarPersonalizacion.addEventListener('click', function (e) {
       e.preventDefault();
       guardarEstructuraLocalmente();
     });
@@ -177,32 +177,32 @@ function guardarEstructuraLocalmente() {
       alert('Error: No se encontró el formulario.');
       return;
     }
-    
+
     const id_personal = formCargarPDF.getAttribute('data-personal-id');
-    
+
     if (!id_personal) {
       alert('No se pudo determinar el personal. Por favor, recarga la página.');
       return;
     }
-    
+
     const storageName = `estructura_${id_personal}`;
     const estructuraJSON = JSON.stringify(ESTRUCTURA_DEFAULT);
-    
+
     localStorage.setItem(storageName, estructuraJSON);
-    
+
     // ACTUALIZAR el campo del formulario INMEDIATAMENTE
     const estructuraJsonField = document.getElementById('estructura_json');
     if (estructuraJsonField) {
       estructuraJsonField.value = estructuraJSON;
     }
-    
+
     alert('Estructura personalizada guardada correctamente');
     const editarEstructura = document.getElementById('editarEstructura');
     const btnPersonalizar = document.getElementById('btnPersonalizar');
-    
-    if(editarEstructura) editarEstructura.classList.add('d-none');
-    if(btnPersonalizar) btnPersonalizar.innerHTML = '<i class="bi bi-pencil me-1"></i>Personalizar Estructura';
-    
+
+    if (editarEstructura) editarEstructura.classList.add('d-none');
+    if (btnPersonalizar) btnPersonalizar.innerHTML = '<i class="bi bi-pencil me-1"></i>Personalizar Estructura';
+
   } catch (error) {
     alert('Error al guardar: ' + error.message);
   }
@@ -220,7 +220,7 @@ function cargarEstructura() {
         nombreSeccion = seccionEncontrada.nombre;
       }
     }
-    
+
     const paginas = datos.pagina_inicio === datos.pagina_fin ? datos.pagina_inicio : `${datos.pagina_inicio}-${datos.pagina_fin}`;
     tbody.innerHTML += `<tr data-seccion="${escapeHtml(seccion)}"><td>${escapeHtml(nombreSeccion)}</td><td>${escapeHtml(datos.tipo_documento)}</td><td>${escapeHtml(datos.descripcion)}</td><td>${escapeHtml(paginas)}</td></tr>`;
   });
@@ -232,21 +232,21 @@ function generarFormularioEstructura() {
   if (!formulario) return;
   formulario.innerHTML = '';
   Object.entries(ESTRUCTURA_DEFAULT).forEach(([seccion, datos]) => generarCardSeccion(seccion, datos, formulario));
-  
+
   const btnAgregar = document.createElement('button');
   btnAgregar.type = 'button';
   btnAgregar.className = 'btn btn-sm btn-success mt-3';
   btnAgregar.innerHTML = '<i class="bi bi-plus-lg me-1"></i>Agregar Sección';
   btnAgregar.addEventListener('click', () => {
     const num = Object.keys(ESTRUCTURA_DEFAULT).length + 1;
-    const newSeccion = `${String(num).padStart(2, '0')}_Nueva`;
-    ESTRUCTURA_DEFAULT[newSeccion] = {"id_seccion": 0, "tipo_documento": "", "descripcion": "", "pagina_inicio": 1, "pagina_fin": 1};
-    
+    const newSeccion = String(num).padStart(2, '0');
+    ESTRUCTURA_DEFAULT[newSeccion] = { "id_seccion": 0, "tipo_documento": "", "descripcion": "", "pagina_inicio": 1, "pagina_fin": 1 };
+
     const tbody = document.getElementById('estructuraBody');
-    if(tbody) {
-        tbody.innerHTML += `<tr data-seccion="${escapeHtml(newSeccion)}"><td>${escapeHtml(newSeccion)}</td><td></td><td></td><td>1</td></tr>`;
+    if (tbody) {
+      tbody.innerHTML += `<tr data-seccion="${escapeHtml(newSeccion)}"><td>${escapeHtml(newSeccion)}</td><td></td><td></td><td>1</td></tr>`;
     }
-    
+
     generarCardSeccion(newSeccion, ESTRUCTURA_DEFAULT[newSeccion], formulario);
     formulario.appendChild(btnAgregar);
   });
@@ -257,7 +257,7 @@ function generarCardSeccion(seccion, datos, formulario) {
   const card = document.createElement('div');
   card.className = 'card mb-3';
   card.setAttribute('data-seccion', seccion);
-  
+
   card.innerHTML = `
     <div class="card-body p-2">
       <div class="row g-2">
@@ -271,30 +271,30 @@ function generarCardSeccion(seccion, datos, formulario) {
       </div>
     </div>
   `;
-  
+
   const seccionSelect = card.querySelector('.seccion-select');
-  
-  if(seccionesCache) {
-      seccionesCache.forEach(sec => {
-        const opt = document.createElement('option');
-        opt.value = sec.id;
-        opt.textContent = sec.nombre;
-        if (sec.id === datos.id_seccion) opt.selected = true;
-        seccionSelect.appendChild(opt);
-      });
+
+  if (seccionesCache) {
+    seccionesCache.forEach(sec => {
+      const opt = document.createElement('option');
+      opt.value = sec.id;
+      opt.textContent = sec.nombre;
+      if (sec.id === datos.id_seccion) opt.selected = true;
+      seccionSelect.appendChild(opt);
+    });
   }
-  
+
   const btnActualizar = card.querySelector('.btn-actualizar-fila');
   const btnEliminar = card.querySelector('.btn-eliminar-fila');
-  
+
   btnActualizar.addEventListener('click', () => actualizarFila(card));
   btnEliminar.addEventListener('click', () => eliminarFila(card));
   seccionSelect.addEventListener('change', () => actualizarTiposDocumento(seccionSelect));
-  
+
   if (datos.id_seccion && datos.id_seccion !== 0) {
     actualizarTiposDocumento(seccionSelect);
   }
-  
+
   formulario.appendChild(card);
 }
 
@@ -302,13 +302,13 @@ function actualizarTiposDocumento(selectElement) {
   const card = selectElement.closest('.card');
   const seccionId = selectElement.value;
   const tipoSelect = card.querySelector('.tipo-documento');
-  
+
   tipoSelect.innerHTML = '<option value="0">Cargando...</option>';
   tipoSelect.disabled = true;
 
   if (seccionId && seccionId !== '0') {
     const url = selectElement.getAttribute('data-tipos-url').replace('/0', `/${seccionId}`);
-    
+
     if (card.fetchTimeout) clearTimeout(card.fetchTimeout);
     card.fetchTimeout = setTimeout(() => {
       fetch(url).then(r => r.json()).then(data => {
@@ -322,7 +322,7 @@ function actualizarTiposDocumento(selectElement) {
           });
           tipoSelect.disabled = false;
         } else {
-            tipoSelect.innerHTML = '<option value="0">Sin tipos</option>';
+          tipoSelect.innerHTML = '<option value="0">Sin tipos</option>';
         }
       }).catch(e => {
         tipoSelect.innerHTML = '<option value="0">Error</option>';
@@ -337,16 +337,16 @@ function actualizarTiposDocumento(selectElement) {
 
 function actualizarFila(card) {
   const seccion = card.getAttribute('data-seccion');
-  
+
   const seccionSelect = card.querySelector('.seccion-select');
   const seccionNumero = seccionSelect.value;
-  
+
   const seccionNombre = seccionSelect.options[seccionSelect.selectedIndex]?.text || seccionNumero;
-  
+
   const tipoDocumentoSelect = card.querySelector('.tipo-documento');
   const tipoDocumentoId = tipoDocumentoSelect.value;
   const tipoDocumentoNombre = tipoDocumentoSelect.options[tipoDocumentoSelect.selectedIndex]?.text || tipoDocumentoSelect.value;
-  
+
   const descripcion = card.querySelector('.descripcion').value;
   const pageStart = parseInt(card.querySelector('.page-start').value);
   const pageEnd = parseInt(card.querySelector('.page-end').value);
@@ -355,20 +355,20 @@ function actualizarFila(card) {
     alert('Por favor completa todos los campos');
     return;
   }
-  
+
   if (isNaN(pageStart) || isNaN(pageEnd) || pageStart < 1 || pageEnd < 1) {
     alert('Las páginas deben ser números válidos mayores a 0');
     return;
   }
 
   ESTRUCTURA_DEFAULT[seccion] = {
-    id_seccion: parseInt(seccionNumero), 
-    tipo_documento: tipoDocumentoNombre, 
-    descripcion: descripcion, 
-    pagina_inicio: pageStart, 
+    id_seccion: parseInt(seccionNumero),
+    tipo_documento: tipoDocumentoNombre,
+    descripcion: descripcion,
+    pagina_inicio: pageStart,
     pagina_fin: pageEnd
   };
-  
+
   const tbody = document.getElementById('estructuraBody');
   const tableRow = tbody.querySelector(`tr[data-seccion="${seccion}"]`);
   if (tableRow) {

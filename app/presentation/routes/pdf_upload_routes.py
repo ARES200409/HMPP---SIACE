@@ -146,43 +146,50 @@ def get_estructura_personal(id_personal):
 
 # Estructura por defecto para legajos
 ESTRUCTURA_LEGAJO_DEFAULT = {
-    "01_DNI": {
+    "01": {
+        "id_seccion": 1,
         "tipo_documento": "DNI",
         "descripcion": "Cédula de Identidad",
         "pagina_inicio": 1,
         "pagina_fin": 1,
     },
-    "02_Curriculum": {
+    "02": {
+        "id_seccion": 2,
         "tipo_documento": "Curriculum",
         "descripcion": "Currículum Vitae",
         "pagina_inicio": 2,
         "pagina_fin": 5,
     },
-    "03_Titulo_Universitario": {
+    "03": {
+        "id_seccion": 3,
         "tipo_documento": "Titulo",
         "descripcion": "Título Universitario",
         "pagina_inicio": 6,
         "pagina_fin": 6,
     },
-    "04_Contrato_Laboral": {
+    "04": {
+        "id_seccion": 4,
         "tipo_documento": "Contrato",
         "descripcion": "Contrato Laboral",
         "pagina_inicio": 7,
         "pagina_fin": 12,
     },
-    "05_Antecedentes_Penales": {
+    "05": {
+        "id_seccion": 5,
         "tipo_documento": "Antecedentes",
         "descripcion": "Antecedentes Penales",
         "pagina_inicio": 13,
         "pagina_fin": 14,
     },
-    "06_Carnet_Sanitario": {
+    "06": {
+        "id_seccion": 6,
         "tipo_documento": "Carnet",
         "descripcion": "Carnet Sanitario",
         "pagina_inicio": 15,
         "pagina_fin": 15,
     },
-    "07_Licencias": {
+    "07": {
+        "id_seccion": 7,
         "tipo_documento": "Licencias",
         "descripcion": "Licencias Profesionales",
         "pagina_inicio": 16,
@@ -291,6 +298,18 @@ def upload_legajo_pdf(personal_id=None):
                 flash(f"Error al procesar PDF: {resultados['error']}", 'danger')
                 return redirect(request.url)
 
+            # Obtener la fecha de emisión del formulario
+            fecha_emision_str = request.form.get('fecha_emision')
+            fecha_emision = None
+            if fecha_emision_str:
+                try:
+                    from datetime import datetime
+                    fecha_emision = datetime.strptime(fecha_emision_str, '%Y-%m-%d').date()
+                    logger.info(f"Usando fecha de emisión del formulario: {fecha_emision}")
+                except ValueError:
+                    logger.warning(f"Fecha inválida: {fecha_emision_str}, se usará fecha actual")
+                    fecha_emision = None
+
             documentos_guardados = 0
             
             for nombre_doc, info in resultados.items():
@@ -368,9 +387,9 @@ def upload_legajo_pdf(personal_id=None):
                             'id_tipo': id_tipo_documento,
                             'id_seccion': id_seccion if id_seccion else 1,
                             'nombre_archivo': nombre_archivo,
-                            'fecha_emision': None,
+                            'fecha_emision': fecha_emision,  # Usa la fecha del formulario
                             'fecha_vencimiento': None,
-                            'descripcion': descripcion_real,  # <--- AQUÍ ESTÁ LA CORRECCIÓN
+                            'descripcion': descripcion_real,
                             'hash_archivo': None,
                         }
                         

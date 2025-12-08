@@ -184,6 +184,8 @@ class DocumentoForm(FlaskForm):
     id_seccion = SelectField('Sección del Legajo', coerce=int, validators=[NumberRange(min=1, message="Debe seleccionar una sección.")])
     id_tipo = SelectField('Tipo de Documento', coerce=int, validators=[NumberRange(min=1, message="Debe seleccionar un tipo de documento.")])
     descripcion = TextAreaField('Descripción (Opcional)', validators=[Optional(), Length(max=500)])
+    fecha_emision = DateField('Fecha de Emisión', format='%Y-%m-%d', validators=[Optional()],
+                              description='Fecha del documento. Si no se especifica, se usará la fecha de hoy.')
     archivo = FileField('Seleccionar Archivo', validators=[
         DataRequired(message="Debe seleccionar un archivo."),
         FileAllowed(['pdf', 'png', 'jpg', 'jpeg', 'docx', 'xlsx'], '¡Solo se permiten archivos PDF, de imagen (PNG, JPG) o de Office (DOCX, XLSX)!')

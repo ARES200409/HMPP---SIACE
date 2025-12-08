@@ -173,6 +173,32 @@ def create_app():
             return nonce
         
         return {'csp_nonce': csp_nonce}
+    
+    # --- FUNCIÓN PARA CONTAR SOLICITUDES PENDIENTES ---
+    @app.context_processor
+    def inject_solicitudes_count():
+        """Inyecta la función solicitudes_pendientes_count() en todos los templates."""
+        def solicitudes_pendientes_count():
+            """Obtiene el número de solicitudes pendientes para mostrar en el badge del sidebar."""
+            # Solo calcular si el usuario está autenticado y tiene el rol apropiado
+            if not current_user.is_authenticated:
+                return 0
+            
+            # Solo mostrar el contador para AdministradorLegajos y Sistemas
+            if current_user.rol not in ['AdministradorLegajos', 'Sistemas']:
+                return 0
+            
+            try:
+                solicitud_service = current_app.config.get('SOLICITUDES_SERVICE')
+                if solicitud_service:
+                    solicitudes = solicitud_service.get_all_pending()
+                    return len(solicitudes) if solicitudes else 0
+                return 0
+            except Exception as e:
+                current_app.logger.error(f"Error al obtener el conteo de solicitudes pendientes: {e}")
+                return 0
+        
+        return {'solicitudes_pendientes_count': solicitudes_pendientes_count}
 
     with app.app_context():
         # --- Inyección de Dependencias (sin cambios) ---

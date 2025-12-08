@@ -454,6 +454,15 @@ class SqlServerUsuarioRepository(IUsuarioRepository):
         cursor.execute("UPDATE usuarios SET email = ? WHERE id_usuario = ?", new_email, user_id)
         conn.commit()
 
+    def update_foto_perfil(self, user_id, foto_filename):
+        """Actualiza la foto de perfil de un usuario."""
+        conn = get_db_write()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE usuarios SET foto_perfil = ? WHERE id_usuario = ?", foto_filename, user_id)
+        if cursor.rowcount == 0:
+            raise ValueError("Usuario no encontrado.")
+        conn.commit()
+
     def create_user(self, username, email, password_hash, id_rol, activo=True, fecha_creacion=None, id_personal=None):
         """
         Crea un nuevo usuario en la base de datos.
@@ -1082,6 +1091,68 @@ class SqlServerPersonalRepository(IPersonalRepository):
             except Exception as delete_error:
                 logger.error(f"Error al eliminar permanentemente documento {document_id} (ambos métodos fallaron): {delete_error}")
                 raise
+
+    def search_documents(self, query=None, id_seccion=None, id_tipo=None):
+        """
+        Busca documentos por descripción, tipo de documento o sección.
+        Retorna una lista de documentos que coinciden con los criterios.
+        """
+        conn = get_db_read()
+        cursor = conn.cursor()
+        
+        try:
+            # Construir la consulta dinámica
+            sql = """
+                SELECT 
+                    d.id_documento,
+                    d.nombre_archivo,
+                    d.descripcion,
+                    d.fecha_emision,
+                    d.fecha_subida,
+                    d.id_personal,
+                    d.id_seccion,
+                    d.id_tipo,
+                    p.dni,
+                    p.nombres,
+                    p.apellidos,
+                    ls.nombre_seccion,
+                    td.nombre_tipo
+                FROM documentos d
+                INNER JOIN personal p ON d.id_personal = p.id_personal
+                LEFT JOIN legajo_secciones ls ON d.id_seccion = ls.id_seccion
+                LEFT JOIN tipo_documento td ON d.id_tipo = td.id_tipo
+                WHERE d.activo = 1
+            """
+            params = []
+            
+            # Filtro por texto (descripción o nombre de archivo)
+            if query:
+                sql += " AND (d.descripcion LIKE ? OR d.nombre_archivo LIKE ? OR p.nombres LIKE ? OR p.apellidos LIKE ? OR p.dni LIKE ?)"
+                search_term = f"%{query}%"
+                params.extend([search_term, search_term, search_term, search_term, search_term])
+            
+            # Filtro por sección
+            if id_seccion and int(id_seccion) > 0:
+                sql += " AND d.id_seccion = ?"
+                params.append(int(id_seccion))
+            
+            # Filtro por tipo de documento
+            if id_tipo and int(id_tipo) > 0:
+                sql += " AND d.id_tipo = ?"
+                params.append(int(id_tipo))
+            
+            sql += " ORDER BY d.fecha_subida DESC"
+            
+            cursor.execute(sql, params)
+            return [_row_to_dict(cursor, row) for row in cursor.fetchall()]
+            
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error en búsqueda de documentos: {e}")
+            return []
+        finally:
+            cursor.close()
 
     # ========================================================================
     # MÉTODOS PARA GESTIÓN DE SECCIONES (AdministradorLegajos)

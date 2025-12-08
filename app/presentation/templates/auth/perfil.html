@@ -6,11 +6,13 @@
 <div class="container-fluid px-4 py-3">
     <!-- Header Premium -->
     <div class="mb-5">
-        <div style="background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); border-radius: 12px; padding: 2rem; color: white; box-shadow: 0 10px 30px rgba(30, 58, 138, 0.2);">
+        <div
+            style="background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); border-radius: 12px; padding: 2rem; color: white; box-shadow: 0 10px 30px rgba(30, 58, 138, 0.2);">
             <div class="row align-items-center">
                 <div class="col-md-8">
                     <h1 style="font-size: 2.5rem; font-weight: 700; margin-bottom: 0.5rem;">Mi Perfil</h1>
-                    <p style="font-size: 1.1rem; opacity: 0.9; margin: 0;">Administra tu cuenta y configuración de seguridad</p>
+                    <p style="font-size: 1.1rem; opacity: 0.9; margin: 0;">Administra tu cuenta y configuración de
+                        seguridad</p>
                 </div>
                 <div class="col-md-4 text-md-end">
                     <div style="font-size: 4rem; opacity: 0.2;">
@@ -21,47 +23,54 @@
         </div>
     </div>
 
-    <!-- Información del Usuario - Mejorada -->
+    <!-- Información del Usuario -->
     <div class="row g-4 mb-5">
         <!-- Tarjeta de Información Principal -->
         <div class="col-lg-4">
-            <div style="background: white; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); overflow: hidden; border: 1px solid #e5e7eb; transition: all 0.3s ease;">
-                <div style="background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); padding: 1.5rem; color: white;">
-                    <h6 style="margin: 0; font-weight: 600; font-size: 1.1rem;"><i class="bi bi-person-circle me-2"></i>Mi Cuenta</h6>
+            <div
+                style="background: white; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); overflow: hidden; border: 1px solid #e5e7eb;">
+                <div
+                    style="background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); padding: 1.5rem; color: white;">
+                    <h6 style="margin: 0; font-weight: 600; font-size: 1.1rem;"><i
+                            class="bi bi-person-circle me-2"></i>Mi Cuenta</h6>
                 </div>
                 <div style="padding: 2rem; text-align: center;">
-                    <!-- Avatar Mejorado -->
+                    <!-- Avatar -->
                     <div style="margin-bottom: 1.5rem;">
-                        <div style="width: 130px; height: 130px; margin: 0 auto 1rem; background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 3rem; box-shadow: 0 8px 20px rgba(30, 58, 138, 0.3); border: 3px solid white;">
+                        <div
+                            style="width: 130px; height: 130px; margin: 0 auto 1rem; background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 3rem; box-shadow: 0 8px 20px rgba(30, 58, 138, 0.3); border: 3px solid white;">
                             <i class="bi bi-person-fill"></i>
                         </div>
                     </div>
 
-                    <!-- Nombre de Usuario -->
-                    <h5 style="font-weight: 700; font-size: 1.5rem; margin-bottom: 0.5rem; color: #1f2937;">{{ user_data.username }}</h5>
-                    <p style="color: #6b7280; margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
+                    <!-- Nombre -->
+                    <h5 style="font-weight: 700; font-size: 1.5rem; margin-bottom: 0.5rem; color: #1f2937;">{{
+                        user_data.username }}</h5>
+                    <p
+                        style="color: #6b7280; margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
                         <i class="bi bi-envelope" style="color: #0284c7;"></i>{{ user_data.email }}
                     </p>
 
-                    <!-- Rol Badge Mejorado -->
+                    <!-- Rol -->
                     {% if user_data.rol %}
                     <div style="margin-bottom: 1.5rem;">
-                        <span style="display: inline-block; background: linear-gradient(135deg, #0f766e 0%, #14b8a6 100%); color: white; padding: 0.6rem 1.2rem; border-radius: 20px; font-weight: 600; font-size: 0.95rem;">
-                            <i class="bi bi-shield-check me-1"></i>{{ user_data.rol.nombre if user_data.rol.nombre else 'Sin Rol' }}
+                        <span
+                            style="display: inline-block; background: linear-gradient(135deg, #0f766e 0%, #14b8a6 100%); color: white; padding: 0.6rem 1.2rem; border-radius: 20px; font-weight: 600; font-size: 0.95rem;">
+                            <i class="bi bi-shield-check me-1"></i>{{ user_data.rol.nombre if user_data.rol.nombre else
+                            'Sin Rol' }}
                         </span>
-                    </div>
-                    {% else %}
-                    <div style="margin-bottom: 1.5rem;">
-                        <span style="display: inline-block; background: #d1d5db; color: #374151; padding: 0.6rem 1.2rem; border-radius: 20px; font-weight: 600;">Sin Rol Asignado</span>
                     </div>
                     {% endif %}
 
-                    <!-- Estado Mejorado -->
+                    <!-- Estado -->
                     <hr style="margin: 1.5rem 0;">
                     <div style="margin-bottom: 1rem;">
                         <p style="color: #6b7280; font-weight: 500; margin-bottom: 0.5rem;">Estado de Cuenta</p>
-                        <span style="display: inline-block; padding: 0.5rem 1rem; border-radius: 6px; font-weight: 600; font-size: 0.9rem; background: {% if user_data.estado == 'activo' %}#dcfce7; color: #166534{% elif user_data.estado == 'inactivo' %}#fef3c7; color: #92400e{% else %}#fee2e2; color: #991b1b{% endif %};">
-                            {% if user_data.estado == 'activo' %}<i class="bi bi-check-circle me-1"></i>{% elif user_data.estado == 'inactivo' %}<i class="bi bi-clock me-1"></i>{% else %}<i class="bi bi-x-circle me-1"></i>{% endif %}
+                        <span
+                            style="display: inline-block; padding: 0.5rem 1rem; border-radius: 6px; font-weight: 600; font-size: 0.9rem; {% if user_data.estado == 'activo' %}background: #dcfce7; color: #166534;{% elif user_data.estado == 'inactivo' %}background: #fef3c7; color: #92400e;{% else %}background: #fee2e2; color: #991b1b;{% endif %}">
+                            {% if user_data.estado == 'activo' %}<i class="bi bi-check-circle me-1"></i>{% elif
+                            user_data.estado == 'inactivo' %}<i class="bi bi-clock me-1"></i>{% else %}<i
+                                class="bi bi-x-circle me-1"></i>{% endif %}
                             {{ user_data.estado | upper }}
                         </span>
                     </div>
@@ -69,115 +78,66 @@
                     {% if user_data.fecha_registro %}
                     <div style="color: #6b7280; font-size: 0.9rem;">
                         <i class="bi bi-calendar-event me-1" style="color: #0284c7;"></i>
-                        <strong>Registrado:</strong> {{ user_data.fecha_registro.strftime('%d de %B de %Y') if user_data.fecha_registro.strftime else user_data.fecha_registro }}
+                        <strong>Registrado:</strong> {{ user_data.fecha_registro.strftime('%d de %B de %Y') if
+                        user_data.fecha_registro.strftime else user_data.fecha_registro }}
                     </div>
                     {% endif %}
                 </div>
             </div>
         </div>
 
-        <!-- Información Personal Mejorada -->
+        <!-- Información Personal -->
         {% if user_data.personal_info %}
-        <div class="col-lg-4">
-            <div style="background: white; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); overflow: hidden; border: 1px solid #e5e7eb;">
-                <div style="background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); padding: 1.5rem; color: white;">
-                    <h6 style="margin: 0; font-weight: 600; font-size: 1.1rem;"><i class="bi bi-file-earmark-text me-2"></i>Datos Personales</h6>
+        <div class="col-lg-8">
+            <div
+                style="background: white; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); overflow: hidden; border: 1px solid #e5e7eb;">
+                <div
+                    style="background: linear-gradient(135deg, #059669 0%, #10b981 100%); padding: 1.5rem; color: white;">
+                    <h6 style="margin: 0; font-weight: 600; font-size: 1.1rem;"><i
+                            class="bi bi-person-badge me-2"></i>Información Personal</h6>
                 </div>
                 <div style="padding: 2rem;">
-                    <div style="margin-bottom: 1.5rem;">
-                        <small style="color: #6b7280; display: block; margin-bottom: 0.3rem; font-weight: 500;">Nombre Completo</small>
-                        <strong style="color: #1f2937; font-size: 1.05rem;">{{ user_data.personal_info.nombres }}</strong>
-                    </div>
-
-                    <div style="margin-bottom: 1.5rem;">
-                        <small style="color: #6b7280; display: block; margin-bottom: 0.3rem; font-weight: 500;">DNI</small>
-                        <strong style="color: #1f2937; font-family: monospace; font-size: 1.1rem; letter-spacing: 1px;">{{ user_data.personal_info.dni }}</strong>
-                    </div>
-
-                    <div style="margin-bottom: 1.5rem;">
-                        <small style="color: #6b7280; display: block; margin-bottom: 0.3rem; font-weight: 500;">Teléfono</small>
-                        <strong style="color: #1f2937;">{{ user_data.personal_info.telefono }}</strong>
-                    </div>
-
-                    <div style="margin-bottom: 1.5rem;">
-                        <small style="color: #6b7280; display: block; margin-bottom: 0.3rem; font-weight: 500;">Email</small>
-                        <strong style="color: #1f2937; word-break: break-word;">{{ user_data.personal_info.email }}</strong>
-                    </div>
-
-                    <hr style="margin: 1.5rem 0;">
-
-                    <div style="margin-bottom: 1.5rem;">
-                        <small style="color: #6b7280; display: block; margin-bottom: 0.3rem; font-weight: 500;">Cargo</small>
-                        <strong style="color: #1f2937;">{{ user_data.personal_info.cargo }}</strong>
-                    </div>
-
-                    <div style="margin-bottom: 1.5rem;">
-                        <small style="color: #6b7280; display: block; margin-bottom: 0.3rem; font-weight: 500;">Unidad Administrativa</small>
-                        <strong style="color: #1f2937;">{{ user_data.personal_info.unidad_administrativa }}</strong>
-                    </div>
-
-                    <div>
-                        <small style="color: #6b7280; display: block; margin-bottom: 0.3rem; font-weight: 500;">Fecha de Ingreso</small>
-                        <strong style="color: #1f2937;">{{ user_data.personal_info.fecha_ingreso }}</strong>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <p style="color: #6b7280; margin-bottom: 0.25rem; font-size: 0.9rem;">Nombre Completo</p>
+                            <p style="font-weight: 600; color: #1f2937; margin: 0;">{{
+                                user_data.personal_info.nombre_completo or 'No especificado' }}</p>
+                        </div>
+                        <div class="col-md-6">
+                            <p style="color: #6b7280; margin-bottom: 0.25rem; font-size: 0.9rem;">DNI</p>
+                            <p style="font-weight: 600; color: #1f2937; margin: 0;">{{ user_data.personal_info.dni or
+                                'No especificado' }}</p>
+                        </div>
+                        <div class="col-md-6">
+                            <p style="color: #6b7280; margin-bottom: 0.25rem; font-size: 0.9rem;">Teléfono</p>
+                            <p style="font-weight: 600; color: #1f2937; margin: 0;">{{ user_data.personal_info.telefono
+                                or 'No especificado' }}</p>
+                        </div>
+                        <div class="col-md-6">
+                            <p style="color: #6b7280; margin-bottom: 0.25rem; font-size: 0.9rem;">Área</p>
+                            <p style="font-weight: 600; color: #1f2937; margin: 0;">{{ user_data.personal_info.area or
+                                'No especificado' }}</p>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
         {% endif %}
-
-        <!-- Información de Seguridad Mejorada -->
-        <div class="col-lg-{% if user_data.personal_info %}4{% else %}8{% endif %}">
-            <div style="background: white; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); overflow: hidden; border: 1px solid #e5e7eb;">
-                <div style="background: linear-gradient(135deg, #ea580c 0%, #f97316 100%); padding: 1.5rem; color: white;">
-                    <h6 style="margin: 0; font-weight: 600; font-size: 1.1rem;"><i class="bi bi-shield-lock me-2"></i>Seguridad</h6>
-                </div>
-                <div style="padding: 2rem;">
-                    <!-- Autenticación 2FA -->
-                    <div style="margin-bottom: 1.5rem; padding: 1.2rem; background: linear-gradient(135deg, #fef3c7 0%, #fef08a 100%); border-radius: 8px; border-left: 4px solid #f59e0b;">
-                        <div style="display: flex; align-items: center; gap: 1rem;">
-                            <div style="font-size: 2rem; color: #ea580c;">
-                                <i class="bi bi-shield-check"></i>
-                            </div>
-                            <div>
-                                <strong style="color: #92400e; display: block; margin-bottom: 0.2rem;">Autenticación de Dos Factores</strong>
-                                <small style="color: #b45309;">Habilitado en modo producción</small>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Contraseña -->
-                    <div style="margin-bottom: 1.5rem; padding: 1.2rem; background: linear-gradient(135deg, #e0e7ff 0%, #ddd6fe 100%); border-radius: 8px; border-left: 4px solid #8b5cf6;">
-                        <div style="display: flex; align-items: center; gap: 1rem;">
-                            <div style="font-size: 2rem; color: #7c3aed;">
-                                <i class="bi bi-key"></i>
-                            </div>
-                            <div>
-                                <strong style="color: #6d28d9; display: block; margin-bottom: 0.2rem;">Contraseña Segura</strong>
-                                <small style="color: #7c3aed;">Se recomienda cambiarla cada 90 días</small>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Tip de Seguridad -->
-                    <div style="padding: 1rem; background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); border-radius: 8px; border-left: 4px solid #0284c7; color: #0c4a6e;">
-                        <i class="bi bi-lightbulb me-2" style="color: #0284c7; font-weight: 600;"></i>
-                        <strong>Consejo:</strong> Usa combinación de mayúsculas, minúsculas, números y símbolos
-                    </div>
-                </div>
-            </div>
-        </div>
     </div>
 
-    <!-- Formularios de Cambio - Mejorados -->
+    <!-- Formularios de Cambio -->
     <div class="row">
         <div class="col-lg-8 mx-auto">
             <!-- Cambiar Email -->
-            <div style="background: white; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); overflow: hidden; border: 1px solid #e5e7eb; margin-bottom: 2rem;">
-                <div style="background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%); padding: 1.5rem; color: white;">
-                    <h6 style="margin: 0; font-weight: 600; font-size: 1.1rem;"><i class="bi bi-envelope-check me-2"></i>Cambiar Correo Electrónico</h6>
+            <div
+                style="background: white; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); overflow: hidden; border: 1px solid #e5e7eb; margin-bottom: 2rem;">
+                <div
+                    style="background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%); padding: 1.5rem; color: white;">
+                    <h6 style="margin: 0; font-weight: 600; font-size: 1.1rem;"><i
+                            class="bi bi-envelope-check me-2"></i>Cambiar Correo Electrónico</h6>
                 </div>
                 <div style="padding: 2rem;">
-                    <p style="color: #6b7280; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                    <p style="color: #6b7280; margin-bottom: 1.5rem;">
                         <i class="bi bi-info-circle" style="color: #0284c7;"></i>
                         Tu email se utiliza para notificaciones y recuperación de cuenta.
                     </p>
@@ -187,39 +147,32 @@
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         {% endif %}
 
-                        <!-- Email Actual -->
                         <div style="margin-bottom: 1.5rem;">
                             <label style="font-weight: 600; color: #1f2937; margin-bottom: 0.5rem; display: block;">
                                 <i class="bi bi-envelope-fill me-2" style="color: #0284c7;"></i>Email Actual
                             </label>
-                            <input 
-                                class="form-control" 
-                                style="padding: 0.8rem 1rem; border-radius: 8px; border: 1px solid #d1d5db; background-color: #f3f4f6;"
-                                type="email" 
-                                value="{{ user_data.email }}"
-                                disabled>
+                            <input class="form-control"
+                                style="padding: 0.8rem 1rem; border-radius: 8px; background-color: #f3f4f6;"
+                                type="email" value="{{ user_data.email }}" disabled>
                         </div>
 
-                        <!-- Nuevo Email -->
                         <div style="margin-bottom: 1.5rem;">
                             <label style="font-weight: 600; color: #1f2937; margin-bottom: 0.5rem; display: block;">
                                 <i class="bi bi-envelope me-2" style="color: #0284c7;"></i>Nuevo Email
                             </label>
-                            <input 
-                                class="form-control" 
-                                style="padding: 0.8rem 1rem; border-radius: 8px; border: 1px solid #d1d5db;"
-                                name="email_nuevo" 
-                                type="email" 
-                                placeholder="Ingresa tu nuevo correo"
-                                required>
+                            <input class="form-control" style="padding: 0.8rem 1rem; border-radius: 8px;"
+                                name="email_nuevo" type="email" placeholder="Ingresa tu nuevo correo" required>
                         </div>
 
-                        <!-- Botones -->
                         <div style="display: flex; gap: 1rem; justify-content: flex-end;">
-                            <button style="padding: 0.8rem 1.5rem; background: #e5e7eb; color: #374151; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; transition: all 0.3s;" type="button" data-cancel-email-form>
+                            <button
+                                style="padding: 0.8rem 1.5rem; background: #e5e7eb; color: #374151; border: none; border-radius: 8px; font-weight: 600; cursor: pointer;"
+                                type="button" data-cancel-email-form>
                                 <i class="bi bi-x-circle me-2"></i>Cancelar
                             </button>
-                            <button style="padding: 0.8rem 1.5rem; background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%); color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; transition: all 0.3s;" type="submit">
+                            <button
+                                style="padding: 0.8rem 1.5rem; background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%); color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer;"
+                                type="submit">
                                 <i class="bi bi-check-circle me-2"></i>Actualizar Email
                             </button>
                         </div>
@@ -228,12 +181,15 @@
             </div>
 
             <!-- Cambiar Contraseña -->
-            <div style="background: white; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); overflow: hidden; border: 1px solid #e5e7eb; margin-bottom: 2rem;">
-                <div style="background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%); padding: 1.5rem; color: white;">
-                    <h6 style="margin: 0; font-weight: 600; font-size: 1.1rem;"><i class="bi bi-key me-2"></i>Cambiar Contraseña</h6>
+            <div
+                style="background: white; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); overflow: hidden; border: 1px solid #e5e7eb; margin-bottom: 2rem;">
+                <div
+                    style="background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%); padding: 1.5rem; color: white;">
+                    <h6 style="margin: 0; font-weight: 600; font-size: 1.1rem;"><i class="bi bi-key me-2"></i>Cambiar
+                        Contraseña</h6>
                 </div>
                 <div style="padding: 2rem;">
-                    <p style="color: #6b7280; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                    <p style="color: #6b7280; margin-bottom: 1.5rem;">
                         <i class="bi bi-shield-lock" style="color: #dc2626;"></i>
                         Por tu seguridad, confirma tu contraseña actual antes de cambiarla.
                     </p>
@@ -249,15 +205,13 @@
                                 <i class="bi bi-key-fill me-2" style="color: #dc2626;"></i>Contraseña Actual
                             </label>
                             <div style="display: flex; gap: 0.5rem;">
-                                <input 
-                                    class="form-control" 
+                                <input class="form-control"
                                     style="padding: 0.8rem 1rem; border-radius: 8px; border: 1px solid #d1d5db; flex: 1;"
-                                    id="password_actual" 
-                                    name="password_actual" 
-                                    type="password" 
-                                    placeholder="Ingresa tu contraseña actual"
-                                    required>
-                                <button style="padding: 0.8rem 1rem; background: #f3f4f6; border: 1px solid #d1d5db; border-radius: 8px; cursor: pointer; transition: all 0.3s;" type="button" data-toggle-password="password_actual">
+                                    id="password_actual" name="password_actual" type="password"
+                                    placeholder="Ingresa tu contraseña actual" required>
+                                <button
+                                    style="padding: 0.8rem 1rem; background: #f3f4f6; border: 1px solid #d1d5db; border-radius: 8px; cursor: pointer;"
+                                    type="button" data-toggle-password="password_actual">
                                     <i class="bi bi-eye"></i>
                                 </button>
                             </div>
@@ -275,16 +229,13 @@
                                     <i class="bi bi-shield-check me-2" style="color: #16a34a;"></i>Nueva Contraseña
                                 </label>
                                 <div style="display: flex; gap: 0.5rem;">
-                                    <input 
-                                        class="form-control" 
+                                    <input class="form-control"
                                         style="padding: 0.8rem 1rem; border-radius: 8px; border: 1px solid #d1d5db; flex: 1;"
-                                        id="password_nueva" 
-                                        name="password_nueva" 
-                                        type="password" 
-                                        placeholder="Mínimo 8 caracteres"
-                                        minlength="8"
-                                        required>
-                                    <button style="padding: 0.8rem 1rem; background: #f3f4f6; border: 1px solid #d1d5db; border-radius: 8px; cursor: pointer;" type="button" data-toggle-password="password_nueva">
+                                        id="password_nueva" name="password_nueva" type="password"
+                                        placeholder="Mínimo 8 caracteres" minlength="8" required>
+                                    <button
+                                        style="padding: 0.8rem 1rem; background: #f3f4f6; border: 1px solid #d1d5db; border-radius: 8px; cursor: pointer;"
+                                        type="button" data-toggle-password="password_nueva">
                                         <i class="bi bi-eye"></i>
                                     </button>
                                 </div>
@@ -297,16 +248,13 @@
                                     <i class="bi bi-shield-check me-2" style="color: #16a34a;"></i>Confirmar Contraseña
                                 </label>
                                 <div style="display: flex; gap: 0.5rem;">
-                                    <input 
-                                        class="form-control" 
+                                    <input class="form-control"
                                         style="padding: 0.8rem 1rem; border-radius: 8px; border: 1px solid #d1d5db; flex: 1;"
-                                        id="password_confirmacion" 
-                                        name="password_confirmacion" 
-                                        type="password" 
-                                        placeholder="Repite la nueva contraseña"
-                                        minlength="8"
-                                        required>
-                                    <button style="padding: 0.8rem 1rem; background: #f3f4f6; border: 1px solid #d1d5db; border-radius: 8px; cursor: pointer;" type="button" data-toggle-password="password_confirmacion">
+                                        id="password_confirmacion" name="password_confirmacion" type="password"
+                                        placeholder="Repite la nueva contraseña" minlength="8" required>
+                                    <button
+                                        style="padding: 0.8rem 1rem; background: #f3f4f6; border: 1px solid #d1d5db; border-radius: 8px; cursor: pointer;"
+                                        type="button" data-toggle-password="password_confirmacion">
                                         <i class="bi bi-eye"></i>
                                     </button>
                                 </div>
@@ -316,10 +264,12 @@
                             </div>
                         </div>
 
-                        <!-- Requisitos de Contraseña -->
-                        <div style="padding: 1rem; background: #f3f4f6; border-radius: 8px; border-left: 4px solid #6b7280; margin-bottom: 1.5rem;">
+                        <!-- Requisitos -->
+                        <div
+                            style="padding: 1rem; background: #f3f4f6; border-radius: 8px; border-left: 4px solid #6b7280; margin-bottom: 1.5rem;">
                             <h6 style="color: #1f2937; margin-bottom: 0.5rem; font-size: 0.95rem;">
-                                <i class="bi bi-bookmark-check me-2" style="color: #6b7280;"></i>Requisitos de Contraseña:
+                                <i class="bi bi-bookmark-check me-2" style="color: #6b7280;"></i>Requisitos de
+                                Contraseña:
                             </h6>
                             <ul style="margin: 0; padding-left: 1.5rem; color: #4b5563; font-size: 0.9rem;">
                                 <li>✓ Mínimo 8 caracteres</li>
@@ -330,12 +280,16 @@
                             </ul>
                         </div>
 
-                        <!-- Botones de Acción -->
+                        <!-- Botones -->
                         <div style="display: flex; gap: 1rem; justify-content: flex-end;">
-                            <button style="padding: 0.8rem 1.5rem; background: #e5e7eb; color: #374151; border: none; border-radius: 8px; font-weight: 600; cursor: pointer;" type="button" data-go-back>
+                            <button
+                                style="padding: 0.8rem 1.5rem; background: #e5e7eb; color: #374151; border: none; border-radius: 8px; font-weight: 600; cursor: pointer;"
+                                type="button" data-go-back>
                                 <i class="bi bi-arrow-left me-2"></i>Cancelar
                             </button>
-                            <button style="padding: 0.8rem 1.5rem; background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%); color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer;" type="submit">
+                            <button
+                                style="padding: 0.8rem 1.5rem; background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%); color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer;"
+                                type="submit">
                                 <i class="bi bi-check-circle me-2"></i>Actualizar Contraseña
                             </button>
                         </div>
@@ -343,15 +297,19 @@
                 </div>
             </div>
 
-            <!-- Cargar Foto de Carnet -->
-            <div style="background: white; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); overflow: hidden; border: 1px solid #e5e7eb;">
-                <div style="background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); padding: 1.5rem; color: white;">
-                    <h6 style="margin: 0; font-weight: 600; font-size: 1.1rem;"><i class="bi bi-card-image me-2"></i>Foto de Carnet</h6>
+            <!-- Cargar Foto de Perfil -->
+            <div
+                style="background: white; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); overflow: hidden; border: 1px solid #e5e7eb;">
+                <div
+                    style="background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); padding: 1.5rem; color: white;">
+                    <h6 style="margin: 0; font-weight: 600; font-size: 1.1rem;"><i
+                            class="bi bi-card-image me-2"></i>Foto de Perfil</h6>
                 </div>
                 <div style="padding: 2rem;">
-                    <p style="color: #6b7280; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                    <p style="color: #6b7280; margin-bottom: 1.5rem;">
                         <i class="bi bi-info-circle" style="color: #16a34a;"></i>
-                        Sube una foto clara de tu carnet. Formatos: JPG, PNG, PDF (máx. 25 MB)
+                        Sube una foto clara. Formatos: JPG, PNG (máx. 25 MB). Se redimensionará automáticamente a
+                        800x800px.
                     </p>
 
                     <form method="POST" action="{{ url_for('auth.perfil') }}" enctype="multipart/form-data" novalidate>
@@ -359,49 +317,52 @@
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         {% endif %}
 
-                        <!-- Zona de carga mejorada -->
-                        <div style="margin-bottom: 1.5rem; padding: 2rem; border: 2px dashed #d1d5db; border-radius: 8px; background: linear-gradient(135deg, #f0fdf4 0%, #f5fdf9 100%); text-align: center; transition: all 0.3s;">
+                        <!-- Zona de carga -->
+                        <div
+                            style="margin-bottom: 1.5rem; padding: 2rem; border: 2px dashed #d1d5db; border-radius: 8px; background: linear-gradient(135deg, #f0fdf4 0%, #f5fdf9 100%); text-align: center;">
                             <div style="font-size: 2.5rem; color: #16a34a; margin-bottom: 1rem;">
                                 <i class="bi bi-cloud-upload"></i>
                             </div>
-                            <label style="font-weight: 600; color: #1f2937; display: block; margin-bottom: 0.5rem;">
+                            <label id="file-label"
+                                style="font-weight: 600; color: #1f2937; display: block; margin-bottom: 0.5rem;">
                                 Selecciona un archivo
                             </label>
-                            <input 
-                                class="form-control" 
-                                style="display: none;"
-                                id="foto_carnet" 
-                                name="foto_carnet" 
-                                type="file"
-                                accept=".jpg,.jpeg,.png,.pdf"
-                                required>
-                            <button style="padding: 0.8rem 1.5rem; background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer;" type="button" data-trigger-file-input="foto_carnet">
+                            <input class="form-control" style="display: none;" id="foto_carnet" name="foto_carnet"
+                                type="file" accept="image/jpeg,image/png,.jpg,.jpeg,.png" required>
+                            <button
+                                style="padding: 0.8rem 1.5rem; background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer;"
+                                type="button" data-trigger-file-input="foto_carnet">
                                 <i class="bi bi-folder-open me-2"></i>Examinar Archivo
                             </button>
                             <small style="color: #6b7280; display: block; margin-top: 0.75rem;">
-                                JPG, PNG o PDF | Máximo 25 MB
+                                JPG o PNG | Máximo 25 MB | Se redimensionará a 800x800px
                             </small>
                         </div>
 
                         <!-- Recomendaciones -->
-                        <div style="padding: 1rem; background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); border-radius: 8px; border-left: 4px solid #0284c7; margin-bottom: 1.5rem; color: #0c4a6e;">
+                        <div
+                            style="padding: 1rem; background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); border-radius: 8px; border-left: 4px solid #0284c7; margin-bottom: 1.5rem; color: #0c4a6e;">
                             <h6 style="margin-bottom: 0.5rem; font-size: 0.95rem;">
                                 <i class="bi bi-bookmark-check me-2" style="color: #0284c7;"></i>Recomendaciones:
                             </h6>
                             <ul style="margin: 0; padding-left: 1.5rem; font-size: 0.9rem;">
                                 <li>✓ Foto clara y legible</li>
                                 <li>✓ Luz adecuada sin reflejos</li>
-                                <li>✓ Documento completo visible</li>
-                                <li>✓ Tamaño entre 1-25 MB</li>
+                                <li>✓ Fondo uniforme preferiblemente</li>
+                                <li>✓ La imagen se convertirá a JPG automáticamente</li>
                             </ul>
                         </div>
 
-                        <!-- Botones de Acción -->
+                        <!-- Botones -->
                         <div style="display: flex; gap: 1rem; justify-content: flex-end;">
-                            <button style="padding: 0.8rem 1.5rem; background: #e5e7eb; color: #374151; border: none; border-radius: 8px; font-weight: 600; cursor: pointer;" type="button" data-go-back>
+                            <button
+                                style="padding: 0.8rem 1.5rem; background: #e5e7eb; color: #374151; border: none; border-radius: 8px; font-weight: 600; cursor: pointer;"
+                                type="button" data-go-back>
                                 <i class="bi bi-arrow-left me-2"></i>Cancelar
                             </button>
-                            <button style="padding: 0.8rem 1.5rem; background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer;" type="submit">
+                            <button
+                                style="padding: 0.8rem 1.5rem; background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer;"
+                                type="submit">
                                 <i class="bi bi-check-circle me-2"></i>Subir Foto
                             </button>
                         </div>
@@ -413,27 +374,61 @@
 </div>
 
 <script nonce="{{ csp_nonce() }}">
-    function togglePasswordVisibility(fieldId) {
-        const field = document.getElementById(fieldId);
-        const button = event.currentTarget;
-        const icon = button.querySelector('i');
-        
-        if (field.type === 'password') {
-            field.type = 'text';
-            icon.classList.remove('bi-eye');
-            icon.classList.add('bi-eye-slash');
-        } else {
-            field.type = 'password';
-            icon.classList.remove('bi-eye-slash');
-            icon.classList.add('bi-eye');
-        }
+    // Toggle de visibilidad de contraseña
+    document.querySelectorAll('[data-toggle-password]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            const fieldId = this.getAttribute('data-toggle-password');
+            const field = document.getElementById(fieldId);
+            const icon = this.querySelector('i');
+
+            if (field.type === 'password') {
+                field.type = 'text';
+                icon.classList.remove('bi-eye');
+                icon.classList.add('bi-eye-slash');
+            } else {
+                field.type = 'password';
+                icon.classList.remove('bi-eye-slash');
+                icon.classList.add('bi-eye');
+            }
+        });
+    });
+
+    // Botones para volver/cancelar
+    document.querySelectorAll('[data-go-back]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            window.history.back();
+        });
+    });
+
+    // Activar input de archivo desde botón personalizado
+    document.querySelectorAll('[data-trigger-file-input]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            const inputId = this.getAttribute('data-trigger-file-input');
+            const inputElement = document.getElementById(inputId);
+            if (inputElement) {
+                inputElement.click();
+            }
+        });
+    });
+
+    // Mostrar nombre del archivo seleccionado
+    const fotoCarnetInput = document.getElementById('foto_carnet');
+    if (fotoCarnetInput) {
+        fotoCarnetInput.addEventListener('change', function () {
+            const fileName = this.files[0] ? this.files[0].name : '';
+            const label = document.getElementById('file-label');
+            if (fileName && label) {
+                label.innerHTML = '<i class="bi bi-check-circle me-1" style="color: #16a34a;"></i> Archivo: <strong>' + fileName + '</strong>';
+            }
+        });
     }
 
+    // Validación de coincidencia de contraseñas
     const passwordNueva = document.getElementById('password_nueva');
     const passwordConfirmacion = document.getElementById('password_confirmacion');
 
     if (passwordConfirmacion) {
-        passwordConfirmacion.addEventListener('input', function() {
+        passwordConfirmacion.addEventListener('input', function () {
             if (passwordNueva.value && passwordConfirmacion.value) {
                 if (passwordNueva.value === passwordConfirmacion.value) {
                     passwordConfirmacion.style.borderColor = '#16a34a';

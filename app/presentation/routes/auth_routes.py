@@ -209,40 +209,82 @@ def perfil():
                 # Validar archivo usando FileValidationService
                 is_valid, error_message = FileValidationService.validate_file(
                     archivo, 
-                    allowed_types=['jpg', 'jpeg', 'png', 'pdf']
+                    allowed_types=['jpg', 'jpeg', 'png']
                 )
                 
                 if not is_valid:
-                    logger.warning(f"SEGURIDAD: Intento de subir foto de carnet inválida - {current_user.username}")
-                    flash(error_message or 'Tipo de archivo no permitido', 'danger')
+                    current_app.logger.warning(f"SEGURIDAD: Intento de subir foto de carnet inválida - {current_user.username}")
+                    flash(error_message or 'Tipo de archivo no permitido. Solo JPG, JPEG o PNG.', 'danger')
                     return redirect(url_for('auth.perfil'))
                 
                 try:
-                    # Crear directorio de carnet si no existe
-                    carnet_dir = os.path.join(
-                        os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-                        'presentation',
-                        'static',
-                        'uploads',
-                        'carnets'
-                    )
-                    os.makedirs(carnet_dir, exist_ok=True)
+                    # Usar directorio de fotos de perfil desde config
+                    fotos_dir = current_app.config.get('FOTOS_PERFIL_DIR')
                     
-                    # Guardar archivo con nombre seguro
+                    if not fotos_dir:
+                        # Fallback en caso de que no esté configurado
+                        fotos_dir = os.path.join(
+                            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                            'presentation',
+                            'static',
+                            'uploads',
+                            'fotos'
+                        )
+                        os.makedirs(fotos_dir,exist_ok=True)
+                    
+                    # Procesar imagen con PIL
+                    from PIL import Image
+                    import io
                     import time
-                    ext = archivo.filename.rsplit('.', 1)[1].lower()
-                    filename = f"carnet_{current_user.id}_{int(time.time())}.{ext}"
-                    filepath = os.path.join(carnet_dir, filename)
                     
-                    archivo.save(filepath)
+                    # Leer la imagen
+                    imagen = Image.open(archivo.stream)
+                    
+                    # Convertir RGBA a RGB si es necesario
+                    if imagen.mode in ('RGBA', 'LA', 'P'):
+                        rgb_imagen = Image.new('RGB', imagen.size, (255, 255, 255))
+                        if imagen.mode == 'P':
+                            imagen = imagen.convert('RGBA')
+                        rgb_imagen.paste(imagen, mask=imagen.split()[-1] if imagen.mode == 'RGBA' else None)
+                        imagen = rgb_imagen
+                    
+                    # Redimensionar a 800x800 manteniendo proporción
+                    max_size = (800, 800)
+                    imagen.thumbnail(max_size, Image.Resampling.LANCZOS)
+                    
+                    # Crear nueva imagen cuadrada con fondo blanco
+                    new_img = Image.new('RGB', (800, 800), (255, 255, 255))
+                    # Centrar la imagen redimensionada
+                    offset = ((800 - imagen.width) // 2, (800 - imagen.height) // 2)
+                    new_img.paste(imagen, offset)
+                    
+                    # Guardar como JPG con nombre único
+                    filename = f"foto_{current_user.id}_{int(time.time())}.jpg"
+                    filepath = os.path.join(fotos_dir, filename)
+                    
+                    # Guardar con calidad optimizada
+                    new_img.save(filepath, 'JPEG', quality=85, optimize=True)
+                    
+                    # Actualizar el campo foto_perfil del usuario en la base de datos
+                    if usuario_service:
+                        usuario_service.update_foto_perfil(current_user.id, filename)
                     
                     # Registrar en bitácora
-                    logger.info(f"AUDITORÍA: Usuario {current_user.username} subió foto de carnet")
+                    audit_service = current_app.config.get('AUDIT_SERVICE')
+                    if audit_service:
+                        audit_service.log(
+                            current_user.id,
+                            'Usuario',
+                            'ACTUALIZAR_FOTO',
+                            f"Usuario {current_user.username} actualizó su foto de perfil"
+                        )
                     
-                    flash('¡Foto de carnet actualizada correctamente!', 'success')
+                    current_app.logger.info(f"AUDITORÍA: Usuario {current_user.username} subió foto de perfil a {fotos_dir}")
+                    flash('¡Foto de perfil actualizada y optimizada correctamente!', 'success')
+                    
                 except Exception as e:
-                    logger.error(f"Error al guardar foto de carnet: {str(e)}")
-                    flash('Ocurrió un error al guardar la foto de carnet.', 'danger')
+                    current_app.logger.error(f"Error al guardar foto de perfil: {str(e)}")
+                    flash('Ocurrió un error al guardar la foto.', 'danger')
                 
                 return redirect(url_for('auth.perfil'))
         

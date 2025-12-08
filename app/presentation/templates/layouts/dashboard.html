@@ -9,24 +9,25 @@
 
 {% block body_content %}
 <div class="d-flex" id="wrapper">
-    
+
     {# CORRECCIÓN: Eliminé 'bg-white' y 'border-end'. Ahora usa el color de tu CSS (.prototipo-sidebar) #}
-    <div class="prototipo-sidebar d-flex flex-column" style="min-width: 260px; width: 260px;"> 
-        
+    <div class="prototipo-sidebar d-flex flex-column" style="min-width: 260px; width: 260px;">
+
         <!-- SECCIÓN DE USUARIO -->
         {# CORRECCIÓN: Eliminé 'bg-light'. Ahora usa el color/degradado de tu CSS (.sidebar-user-info) #}
         <div class="sidebar-user-info text-center p-4 border-bottom">
             <div class="position-relative d-inline-block mb-3">
                 <!-- Foto de Perfil -->
-                <div class="profile-image-container rounded-circle overflow-hidden mx-auto" style="width: 90px; height: 90px;">
-                    {% if current_user.foto_perfil %} 
-                        <img src="{{ url_for('static', filename='uploads/fotos/' + current_user.foto_perfil) }}" 
-                             alt="Foto de {{ current_user.nombre_completo }}" 
-                             class="w-100 h-100 object-fit-cover">
+                <div class="profile-image-container rounded-circle overflow-hidden mx-auto"
+                    style="width: 90px; height: 90px;">
+                    {% if current_user.foto_perfil %}
+                    <img src="{{ url_for('serve_foto_perfil', filename=current_user.foto_perfil) }}"
+                        alt="Foto de {{ current_user.nombre_completo }}" class="w-100 h-100 object-fit-cover">
                     {% else %}
-                        <div class="w-100 h-100 d-flex align-items-center justify-content-center bg-secondary text-white">
-                            <span class="fs-1 fw-bold">{{ current_user.nombre_completo[0] if current_user.nombre_completo else current_user.username[0] }}</span>
-                        </div>
+                    <div class="w-100 h-100 d-flex align-items-center justify-content-center bg-secondary text-white">
+                        <span class="fs-1 fw-bold">{{ current_user.nombre_completo[0] if current_user.nombre_completo
+                            else current_user.username[0] }}</span>
+                    </div>
                     {% endif %}
                 </div>
             </div>
@@ -58,17 +59,17 @@
             {% set active_test = 'index' %}
 
             {% if current_user.rol == 'Sistemas' %}
-                {% set HOME_URL = url_for('sistemas.dashboard') %}
-                {% set active_test = 'sistemas.dashboard' %}
+            {% set HOME_URL = url_for('sistemas.dashboard') %}
+            {% set active_test = 'sistemas.dashboard' %}
             {% elif current_user.rol == 'RRHH' %}
-                {% set HOME_URL = url_for('rrhh.inicio_rrhh') %}
-                {% set active_test = 'rrhh.inicio_rrhh' %}
+            {% set HOME_URL = url_for('rrhh.inicio_rrhh') %}
+            {% set active_test = 'rrhh.inicio_rrhh' %}
             {% elif current_user.rol == 'AdministradorLegajos' %}
-                {% set HOME_URL = url_for('legajo.dashboard') %}
-                {% set active_test = 'legajo.dashboard' %}
+            {% set HOME_URL = url_for('legajo.dashboard') %}
+            {% set active_test = 'legajo.dashboard' %}
             {% elif current_user.rol == 'Personal' or current_user.rol == 'Empleado' %}
-                {% set HOME_URL = url_for('personal.inicio') %}
-                {% set active_test = 'personal.inicio' %}    
+            {% set HOME_URL = url_for('personal.inicio') %}
+            {% set active_test = 'personal.inicio' %}
             {% endif %}
 
             {# ENLACES DEL MENÚ #}
@@ -76,44 +77,61 @@
                 {% if request.endpoint == active_test or request.endpoint == 'main_dashboard' %}active{% endif %}">
                 <i class="bi bi-house-door-fill me-2"></i>Inicio
             </a>
-            
+
             {# --- Opciones para Legajos --- #}
             {% if current_user.rol in ['AdministradorLegajos', 'Sistemas'] %}
-            <a href="{{ url_for('legajo.crear_personal') }}" class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 {% if request.endpoint == 'legajo.crear_personal' %}active{% endif %}">
+            <a href="{{ url_for('legajo.crear_personal') }}"
+                class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 {% if request.endpoint == 'legajo.crear_personal' %}active{% endif %}">
                 <i class="bi bi-folder-plus me-2"></i>Nuevo Legajo
             </a>
-            <a href="{{ url_for('legajo.listar_personal') }}" class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 {% if request.endpoint in ['legajo.listar_personal', 'legajo.ver_legajo'] %}active{% endif %}">
+            <a href="{{ url_for('legajo.listar_personal') }}"
+                class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 {% if request.endpoint in ['legajo.listar_personal', 'legajo.ver_legajo'] %}active{% endif %}">
                 <i class="bi bi-search me-2"></i>Consultar Legajo
             </a>
-            <a href="{{ url_for('legajo.gestionar_solicitudes') }}" class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 {% if 'solicitudes' in request.endpoint %}active{% endif %}">
-                <i class="bi bi-inbox-fill me-2"></i>Solicitudes
+            <a href="{{ url_for('legajo.buscar_documentos') }}"
+                class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 {% if request.endpoint == 'legajo.buscar_documentos' %}active{% endif %}">
+                <i class="bi bi-file-earmark-search me-2"></i>Buscar Documentos
+            </a>
+            <a href="{{ url_for('legajo.gestionar_solicitudes') }}"
+                class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 d-flex justify-content-between align-items-center {% if 'solicitudes' in request.endpoint %}active{% endif %}">
+                <span><i class="bi bi-inbox-fill me-2"></i>Solicitudes</span>
+                {% set pending_count = solicitudes_pendientes_count() %}
+                {% if pending_count > 0 %}
+                <span class="badge bg-danger rounded-pill">{{ pending_count }}</span>
+                {% endif %}
             </a>
             {% endif %}
 
             {# --- Opciones para RRHH --- #}
             {% if current_user.rol in ['RRHH', 'Sistemas'] %}
             {% if current_user.rol != 'Sistemas' %}
-            <a href="{{ url_for('rrhh.listar_personal') }}" class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 {% if request.endpoint in ['rrhh.listar_personal', 'rrhh.ver_legajo'] %}active{% endif %}">
+            <a href="{{ url_for('rrhh.listar_personal') }}"
+                class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 {% if request.endpoint in ['rrhh.listar_personal', 'rrhh.ver_legajo'] %}active{% endif %}">
                 <i class="bi bi-search me-2"></i>Consultar Legajos
             </a>
             {% endif %}
-            <a href="{{ url_for('rrhh.panel_rrhh') }}" class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 {% if request.endpoint == 'rrhh.panel_rrhh' %}active{% endif %}">
+            <a href="{{ url_for('rrhh.panel_rrhh') }}"
+                class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 {% if request.endpoint == 'rrhh.panel_rrhh' %}active{% endif %}">
                 <i class="bi bi-graph-up me-2"></i>Estadísticas
             </a>
-            <a href="{{ url_for('rrhh.exportar_empleados_excel') }}" class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 {% if request.endpoint == 'rrhh.exportar_empleados_excel' %}active{% endif %}">
+            <a href="{{ url_for('rrhh.exportar_empleados_excel') }}"
+                class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 {% if request.endpoint == 'rrhh.exportar_empleados_excel' %}active{% endif %}">
                 <i class="bi bi-file-earmark-excel me-2"></i>Exportar a Excel
             </a>
             {% endif %}
 
             {# --- Opciones para Personal / Empleado --- #}
             {% if current_user.rol == 'Personal' or current_user.rol == 'Empleado' %}
-            <a href="{{ url_for('personal.ver_datos_personales') }}" class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 {% if request.endpoint == 'personal.ver_datos_personales' %}active{% endif %}">
+            <a href="{{ url_for('personal.ver_datos_personales') }}"
+                class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 {% if request.endpoint == 'personal.ver_datos_personales' %}active{% endif %}">
                 <i class="bi bi-person-badge me-2"></i>Mis Datos
             </a>
-            <a href="{{ url_for('personal.ver_mi_legajo') }}" class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 {% if request.endpoint == 'personal.ver_mi_legajo' %}active{% endif %}">
+            <a href="{{ url_for('personal.ver_mi_legajo') }}"
+                class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 {% if request.endpoint == 'personal.ver_mi_legajo' %}active{% endif %}">
                 <i class="bi bi-folder2-open me-2"></i>Legajo Digital
             </a>
-            <a href="{{ url_for('personal.actualizar_datos') }}" class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 {% if request.endpoint == 'personal.actualizar_datos' %}active{% endif %}">
+            <a href="{{ url_for('personal.actualizar_datos') }}"
+                class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 {% if request.endpoint == 'personal.actualizar_datos' %}active{% endif %}">
                 <i class="bi bi-pencil-square me-2"></i>Rectificar Datos
             </a>
             <!--
@@ -131,67 +149,86 @@
 
             {# --- Opciones para Sistemas --- #}
             {% if current_user.rol == 'Sistemas' %}
-            <a href="{{ url_for('sistemas.auditoria') }}" class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 {% if request.endpoint == 'sistemas.auditoria' %}active{% endif %}">
+            <a href="{{ url_for('sistemas.auditoria') }}"
+                class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 {% if request.endpoint == 'sistemas.auditoria' %}active{% endif %}">
                 <i class="bi bi-journal-check me-2"></i>Auditoría
             </a>
-            <a href="{{ url_for('sistemas.gestionar_usuarios') }}" class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 {% if request.endpoint == 'sistemas.gestionar_usuarios' %}active{% endif %}">
+            <a href="{{ url_for('sistemas.gestionar_usuarios') }}"
+                class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 {% if request.endpoint == 'sistemas.gestionar_usuarios' %}active{% endif %}">
                 <i class="bi bi-person-gear me-2"></i>Gestión de Usuarios
             </a>
-            <a href="{{ url_for('sistemas.estado_servidor') }}" class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 {% if request.endpoint == 'sistemas.estado_servidor' %}active{% endif %}">
+            <a href="{{ url_for('sistemas.estado_servidor') }}"
+                class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 {% if request.endpoint == 'sistemas.estado_servidor' %}active{% endif %}">
                 <i class="bi bi-cpu me-2"></i>Monitoreo
             </a>
-            <a href="{{ url_for('sistemas.gestion_backups') }}" class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 {% if 'backups' in request.endpoint %}active{% endif %}">
+            <a href="{{ url_for('sistemas.gestion_backups') }}"
+                class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 {% if 'backups' in request.endpoint %}active{% endif %}">
                 <i class="bi bi-cloud-upload me-2"></i>Backups
             </a>
-            <a href="{{ url_for('sistemas.errores') }}" class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 {% if request.endpoint == 'sistemas.errores' %}active{% endif %}">
+            <a href="{{ url_for('sistemas.errores') }}"
+                class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 {% if request.endpoint == 'sistemas.errores' %}active{% endif %}">
                 <i class="bi bi-bug me-2"></i>Log de Errores
             </a>
-            <a href="{{ url_for('sistemas.documentos_eliminados') }}" class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 {% if request.endpoint == 'sistemas.documentos_eliminados' %}active{% endif %}">
+            <a href="{{ url_for('sistemas.documentos_eliminados') }}"
+                class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 {% if request.endpoint == 'sistemas.documentos_eliminados' %}active{% endif %}">
                 <i class="bi bi-trash-fill me-2"></i>Papelera Docs
             </a>
             {% endif %}
 
         </div>
-        
-        <div class="list-group list-group-flush mt-auto p-2 border-top" style="border-color: rgba(255,255,255,0.1) !important;">
-            <a href="{{ url_for('auth.logout') }}" class="list-group-item list-group-item-action border-0 rounded px-3 text-danger">
+
+        <div class="list-group list-group-flush mt-auto p-2 border-top"
+            style="border-color: rgba(255,255,255,0.1) !important;">
+            <a href="{{ url_for('auth.logout') }}"
+                class="list-group-item list-group-item-action border-0 rounded px-3 text-danger">
                 <i class="bi bi-box-arrow-left me-2"></i>Cerrar Sesión
             </a>
         </div>
     </div>
 
     <div id="page-content-wrapper" class="w-100 bg-light">
-        <header class="bg-white border-bottom py-3 px-4 d-flex align-items-center justify-content-between shadow-sm mb-4 sticky-top">
+        <header
+            class="bg-white border-bottom py-3 px-4 d-flex align-items-center justify-content-between shadow-sm mb-4 sticky-top">
             <div class="d-flex align-items-center">
                 <button class="btn btn-light border me-3" id="sidebarToggle">
                     <i class="bi bi-list"></i>
                 </button>
                 <div class="d-flex align-items-center gap-3 d-none d-md-flex">
-                    <img src="{{ url_for('static', filename='img/diresa_logo.png') }}" alt="DIRESA" style="height: 40px;">
-                    <div class="vr"></div> 
-                    <img src="{{ url_for('static', filename='img/logo_ministerio_salud.png') }}" alt="MINSA" style="height: 40px;">
+                    <img src="{{ url_for('static', filename='img/diresa_logo.png') }}" alt="DIRESA"
+                        style="height: 40px;">
+                    <div class="vr"></div>
+                    <img src="{{ url_for('static', filename='img/logo_ministerio_salud.png') }}" alt="MINSA"
+                        style="height: 40px;">
                 </div>
             </div>
 
             <div class="d-flex align-items-center">
                 <div class="dropdown">
-                    <a href="#" class="d-flex align-items-center text-dark text-decoration-none dropdown-toggle gap-2" id="dropdownUser" data-bs-toggle="dropdown" aria-expanded="false">
+                    <a href="#" class="d-flex align-items-center text-dark text-decoration-none dropdown-toggle gap-2"
+                        id="dropdownUser" data-bs-toggle="dropdown" aria-expanded="false">
                         <div class="text-end d-none d-sm-block">
                             <div class="fw-bold small">{{ current_user.nombre_completo or current_user.username }}</div>
                             <div class="text-muted" style="font-size: 0.75rem;">{{ current_user.rol }}</div>
                         </div>
-                        <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center" style="width: 32px; height: 32px; font-size: 0.8rem;">
-                            {{ current_user.nombre_completo[0] if current_user.nombre_completo else current_user.username[0] }}
+                        <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center"
+                            style="width: 32px; height: 32px; font-size: 0.8rem;">
+                            {{ current_user.nombre_completo[0] if current_user.nombre_completo else
+                            current_user.username[0] }}
                         </div>
                     </a>
                     <ul class="dropdown-menu dropdown-menu-end shadow border-0 mt-2" aria-labelledby="dropdownUser">
                         <li class="px-3 py-2 border-bottom">
                             <div class="fw-bold">Conectado como</div>
-                            <small class="text-muted text-truncate d-block" style="max-width: 150px;">{{ current_user.username }}</small>
+                            <small class="text-muted text-truncate d-block" style="max-width: 150px;">{{
+                                current_user.username }}</small>
                         </li>
-                        <li><a class="dropdown-item py-2" href="{{ url_for('auth.perfil') }}"><i class="bi bi-person me-2"></i>Mi Perfil</a></li>
-                        <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item py-2 text-danger" href="{{ url_for('auth.logout') }}"><i class="bi bi-box-arrow-left me-2"></i>Cerrar Sesión</a></li>
+                        <li><a class="dropdown-item py-2" href="{{ url_for('auth.perfil') }}"><i
+                                    class="bi bi-person me-2"></i>Mi Perfil</a></li>
+                        <li>
+                            <hr class="dropdown-divider">
+                        </li>
+                        <li><a class="dropdown-item py-2 text-danger" href="{{ url_for('auth.logout') }}"><i
+                                    class="bi bi-box-arrow-left me-2"></i>Cerrar Sesión</a></li>
                     </ul>
                 </div>
             </div>
@@ -199,17 +236,19 @@
 
         <div class="container-fluid px-4 pb-5">
             {% with messages = get_flashed_messages(with_categories=true) %}
-                {% if messages %}
-                    {% for category, message in messages %}
-                    <div class="alert alert-{{ 'danger' if category == 'danger' else 'warning' if category == 'warning' else 'info' if category == 'info' else 'success' }} alert-dismissible fade show shadow-sm border-0 mb-4" role="alert">
-                        <div class="d-flex align-items-center">
-                            <i class="bi bi-{% if category == 'danger' %}exclamation-circle-fill{% elif category == 'warning' %}exclamation-triangle-fill{% elif category == 'info' %}info-circle-fill{% else %}check-circle-fill{% endif %} fs-4 me-3"></i>
-                            <div>{{ message }}</div>
-                        </div>
-                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                    </div>
-                    {% endfor %}
-                {% endif %}
+            {% if messages %}
+            {% for category, message in messages %}
+            <div class="alert alert-{{ 'danger' if category == 'danger' else 'warning' if category == 'warning' else 'info' if category == 'info' else 'success' }} alert-dismissible fade show shadow-sm border-0 mb-4"
+                role="alert">
+                <div class="d-flex align-items-center">
+                    <i
+                        class="bi bi-{% if category == 'danger' %}exclamation-circle-fill{% elif category == 'warning' %}exclamation-triangle-fill{% elif category == 'info' %}info-circle-fill{% else %}check-circle-fill{% endif %} fs-4 me-3"></i>
+                    <div>{{ message }}</div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+            {% endfor %}
+            {% endif %}
             {% endwith %}
 
             <main>
@@ -228,11 +267,11 @@
                 document.getElementById('wrapper').classList.toggle('toggled');
             });
         }
-        
+
         // Inicializar tooltips de Bootstrap
         var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
         var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-          return new bootstrap.Tooltip(tooltipTriggerEl)
+            return new bootstrap.Tooltip(tooltipTriggerEl)
         })
     });
 </script>

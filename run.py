@@ -21,4 +21,4 @@ if __name__ == '__main__':
     
     # Ejecutar la aplicación
     # debug=False es CRÍTICO para producción y para que PyInstaller funcione bien sin consola
-    app.run(host='0.0.0.0', port=5001, debug=False)
+    app.run(host='0.0.0.0', port=5001, debug=True)

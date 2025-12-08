@@ -373,70 +373,7 @@
     </div>
 </div>
 
-<script nonce="{{ csp_nonce() }}">
-    // Toggle de visibilidad de contraseña
-    document.querySelectorAll('[data-toggle-password]').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-            const fieldId = this.getAttribute('data-toggle-password');
-            const field = document.getElementById(fieldId);
-            const icon = this.querySelector('i');
+<!-- Cargar el script externo con toda la funcionalidad -->
+<script src="{{ url_for('static', filename='js/perfil-handlers.js') }}" nonce="{{ csp_nonce() }}"></script>
 
-            if (field.type === 'password') {
-                field.type = 'text';
-                icon.classList.remove('bi-eye');
-                icon.classList.add('bi-eye-slash');
-            } else {
-                field.type = 'password';
-                icon.classList.remove('bi-eye-slash');
-                icon.classList.add('bi-eye');
-            }
-        });
-    });
-
-    // Botones para volver/cancelar
-    document.querySelectorAll('[data-go-back]').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-            window.history.back();
-        });
-    });
-
-    // Activar input de archivo desde botón personalizado
-    document.querySelectorAll('[data-trigger-file-input]').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-            const inputId = this.getAttribute('data-trigger-file-input');
-            const inputElement = document.getElementById(inputId);
-            if (inputElement) {
-                inputElement.click();
-            }
-        });
-    });
-
-    // Mostrar nombre del archivo seleccionado
-    const fotoCarnetInput = document.getElementById('foto_carnet');
-    if (fotoCarnetInput) {
-        fotoCarnetInput.addEventListener('change', function () {
-            const fileName = this.files[0] ? this.files[0].name : '';
-            const label = document.getElementById('file-label');
-            if (fileName && label) {
-                label.innerHTML = '<i class="bi bi-check-circle me-1" style="color: #16a34a;"></i> Archivo: <strong>' + fileName + '</strong>';
-            }
-        });
-    }
-
-    // Validación de coincidencia de contraseñas
-    const passwordNueva = document.getElementById('password_nueva');
-    const passwordConfirmacion = document.getElementById('password_confirmacion');
-
-    if (passwordConfirmacion) {
-        passwordConfirmacion.addEventListener('input', function () {
-            if (passwordNueva.value && passwordConfirmacion.value) {
-                if (passwordNueva.value === passwordConfirmacion.value) {
-                    passwordConfirmacion.style.borderColor = '#16a34a';
-                } else {
-                    passwordConfirmacion.style.borderColor = '#dc2626';
-                }
-            }
-        });
-    }
-</script>
 {% endblock %}

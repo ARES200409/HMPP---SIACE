@@ -1538,14 +1538,25 @@ class SqlServerSolicitudRepository:
                 sm.id_personal,
                 sm.id_usuario_solicitante,
                 sm.campo_modificado,
-                sm.valor_anterior,
-                sm.valor_nuevo,
+                sm.valor_anterior AS motivo,
+                sm.valor_nuevo AS ruta_archivo_nuevo,
                 sm.estado,
                 sm.fecha_solicitud,
+                -- Datos del personal afectado (dueño del legajo)
                 p.nombres + ' ' + p.apellidos AS nombre_personal,
-                p.dni
+                p.dni,
+                -- Datos del usuario que solicita el cambio
+                ISNULL(u.username, 'N/A') AS username,
+                ISNULL(p_solicitante.nombres, '') AS nombres,
+                ISNULL(p_solicitante.apellidos, '') AS apellidos,
+                -- Nombre del tipo de documento
+                ISNULL(td.nombre_tipo, 'Documento') AS nombre_doc_original
             FROM solicitudes_modificacion sm
             LEFT JOIN personal p ON sm.id_personal = p.id_personal
+            LEFT JOIN usuarios u ON sm.id_usuario_solicitante = u.id_usuario
+            LEFT JOIN personal p_solicitante ON u.id_personal = p_solicitante.id_personal
+            LEFT JOIN documentos d ON TRY_CAST(sm.campo_modificado AS INT) = d.id_documento
+            LEFT JOIN tipo_documento td ON d.id_tipo = td.id_tipo
             WHERE sm.estado = 'Pendiente'
             ORDER BY sm.fecha_solicitud DESC
             """

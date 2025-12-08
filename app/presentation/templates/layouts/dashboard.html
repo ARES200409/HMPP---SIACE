@@ -258,23 +258,8 @@
     </div>
 </div>
 
-<script nonce="{{ csp_nonce() }}">
-    document.addEventListener('DOMContentLoaded', event => {
-        const sidebarToggle = document.getElementById('sidebarToggle');
-        if (sidebarToggle) {
-            sidebarToggle.addEventListener('click', event => {
-                event.preventDefault();
-                document.getElementById('wrapper').classList.toggle('toggled');
-            });
-        }
 
-        // Inicializar tooltips de Bootstrap
-        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
-        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-            return new bootstrap.Tooltip(tooltipTriggerEl)
-        })
-    });
-</script>
+<script src="{{ url_for('static', filename='js/dashboard.js') }}" nonce="{{ csp_nonce() }}"></script>
 
 {% block scripts %}{% endblock %}
 

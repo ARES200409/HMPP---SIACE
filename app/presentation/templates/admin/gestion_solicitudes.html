@@ -40,29 +40,50 @@
                                 <span class="badge bg-secondary">{{ sol.nombre_doc_original }}</span>
                             </td>
                             <td>
-                                <span class="d-inline-block text-truncate" style="max-width: 250px;" title="{{ sol.motivo }}">
+                                <span class="d-inline-block text-truncate" style="max-width: 250px;"
+                                    title="{{ sol.motivo }}">
                                     {{ sol.motivo }}
                                 </span>
                             </td>
                             <td>
-                                {# Enlace actualizado a legajo.ver_archivo_propuesto #}
-                                <a href="{{ url_for('legajo.ver_archivo_propuesto', solicitud_id=sol.id_solicitud) }}" target="_blank" class="btn btn-sm btn-info text-white">
-                                    <i class="bi bi-file-earmark-arrow-up"></i> Ver Nuevo
-                                </a>
+                                <div class="d-flex flex-column gap-1">
+                                    {# Botón para ver el documento ORIGINAL (actual) #}
+                                    {# Extraer solo el número si viene como "Documento ID: 42" #}
+                                    {% set doc_id = sol.campo_modificado | string %}
+                                    {% if 'Documento ID:' in doc_id %}
+                                    {% set doc_id = doc_id.split(':')[1] | trim %}
+                                    {% endif %}
+                                    <a href="{{ url_for('legajo.ver_documento', documento_id=doc_id | int) }}"
+                                        target="_blank" class="btn btn-sm btn-secondary">
+                                        <i class="bi bi-file-earmark-text"></i> Ver Original
+                                    </a>
+                                    {# Botón para ver el documento NUEVO (propuesto) #}
+                                    <a href="{{ url_for('legajo.ver_archivo_propuesto', solicitud_id=sol.id_solicitud) }}"
+                                        target="_blank" class="btn btn-sm btn-info text-white">
+                                        <i class="bi bi-file-earmark-arrow-up"></i> Ver Nuevo
+                                    </a>
+                                </div>
                             </td>
                             <td class="text-center">
                                 <div class="btn-group" role="group">
                                     {# Formularios actualizados a legajo.procesar_solicitud #}
-                                    <form action="{{ url_for('legajo.procesar_solicitud', solicitud_id=sol.id_solicitud, accion='aprobar') }}" method="POST" class="d-inline">
+                                    <form
+                                        action="{{ url_for('legajo.procesar_solicitud', solicitud_id=sol.id_solicitud, accion='aprobar') }}"
+                                        method="POST" class="d-inline">
                                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                        <button type="submit" class="btn btn-success btn-sm me-1" data-confirm="¿Está seguro de APROBAR este cambio? El documento anterior será reemplazado permanentemente." title="Aprobar Cambio">
+                                        <button type="submit" class="btn btn-success btn-sm me-1"
+                                            data-confirm="¿Está seguro de APROBAR este cambio? El documento anterior será reemplazado permanentemente."
+                                            title="Aprobar Cambio">
                                             <i class="bi bi-check-lg"></i>
                                         </button>
                                     </form>
-                                    
-                                    <form action="{{ url_for('legajo.procesar_solicitud', solicitud_id=sol.id_solicitud, accion='rechazar') }}" method="POST" class="d-inline">
+
+                                    <form
+                                        action="{{ url_for('legajo.procesar_solicitud', solicitud_id=sol.id_solicitud, accion='rechazar') }}"
+                                        method="POST" class="d-inline">
                                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                        <button type="submit" class="btn btn-danger btn-sm" data-confirm="¿Rechazar esta solicitud?" title="Rechazar Cambio">
+                                        <button type="submit" class="btn btn-danger btn-sm"
+                                            data-confirm="¿Rechazar esta solicitud?" title="Rechazar Cambio">
                                             <i class="bi bi-x-lg"></i>
                                         </button>
                                     </form>

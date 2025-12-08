@@ -1,0 +1,53 @@
+{% extends 'layouts/dashboard.html' %}
+{% block title %}Crear Tipo de Documento - Legajo Digital Diresa{% endblock %}
+
+{% block dashboard_content %}
+<div class="container-fluid mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-8 col-lg-6">
+            <div class="card shadow">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-plus me-2"></i>
+                        Crear Nuevo Tipo de Documento
+                    </h5>
+                </div>
+
+                <div class="card-body">
+                    <form method="POST">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+
+                        <div class="mb-3">
+                            <label for="nombre_tipo" class="form-label">
+                                Nombre del Tipo de Documento <span class="text-danger">*</span>
+                            </label>
+                            <input type="text" class="form-control" id="nombre_tipo" name="nombre_tipo" required
+                                maxlength="150" placeholder="Ej: DNI, Título Profesional, Contrato, etc.">
+                            <div class="form-text">
+                                Este nombre aparecerá en los formularios cuando se suban documentos.
+                            </div>
+                        </div>
+
+                        <div class="alert alert-info" role="alert">
+                            <i class="bi bi-info-circle me-2"></i>
+                            <strong>Nota:</strong> Después de crear el tipo de documento, podrás asociarlo a secciones
+                            específicas.
+                        </div>
+
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-success">
+                                <i class="bi bi-save me-2"></i>
+                                Crear Tipo de Documento
+                            </button>
+                            <a href="{{ url_for('admin_catalogo.listar_tipos_documento') }}" class="btn btn-secondary">
+                                <i class="bi bi-x me-2"></i>
+                                Cancelar
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -5,7 +5,20 @@ from dotenv import load_dotenv
 
 # Hacemos la ruta al .env explícita para evitar problemas
 basedir = os.path.abspath(os.path.dirname(__file__))
-load_dotenv(os.path.join(basedir, '..', '.env'))
+
+# Definir BASE_DATA_DIR temprano para usarlo en la carga del .env
+if os.name == 'nt':
+    BASE_DATA_DIR = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 'LegajoDigitalDIRESA')
+else:
+    BASE_DATA_DIR = os.path.join(os.path.expanduser('~'), '.legajo_digital')
+
+# Intentar cargar .env desde LOCALAPPDATA (Producción/Instalado)
+env_path_prod = os.path.join(BASE_DATA_DIR, '.env')
+if os.path.exists(env_path_prod):
+    load_dotenv(env_path_prod)
+else:
+    # Fallback: Cargar desde el directorio del proyecto (Desarrollo)
+    load_dotenv(os.path.join(basedir, '..', '.env'))
 
 class Config:
     """
@@ -23,7 +36,26 @@ class Config:
 
     # --- CONFIGURACIÓN DE LA BASE DE DATOS (LECTURA/ESCRITURA) ---
     # Carga todas las credenciales desde tu archivo .env
-    DB_DRIVER = os.environ.get('DB_DRIVER')
+    
+    # Detectar automáticamente el driver ODBC disponible
+    DB_DRIVER_ENV = os.environ.get('DB_DRIVER')
+    if DB_DRIVER_ENV:
+        DB_DRIVER = DB_DRIVER_ENV
+    else:
+        # Intentar detectar el driver instalado
+        import pyodbc
+        drivers = [d for d in pyodbc.drivers() if 'SQL Server' in d]
+        if drivers:
+            # Preferir ODBC Driver 18, luego 17
+            if any('ODBC Driver 18' in d for d in drivers):
+                DB_DRIVER = 'ODBC Driver 18 for SQL Server'
+            elif any('ODBC Driver 17' in d for d in drivers):
+                DB_DRIVER = 'ODBC Driver 17 for SQL Server'
+            else:
+                DB_DRIVER = drivers[0]  # Usar el primero disponible
+        else:
+            DB_DRIVER = 'ODBC Driver 17 for SQL Server'  # Valor por defecto
+    
     DB_SERVER = os.environ.get('DB_SERVER')
     DB_DATABASE = os.environ.get('DB_DATABASE')
     
@@ -56,3 +88,18 @@ class Config:
     
     # Define el tamaño máximo del archivo en bytes (100 MB)
     MAX_CONTENT_LENGTH = 100 * 1024 * 1024
+
+    # --- DIRECTORIOS DE DATOS (SOLUCIÓN PERMISOS) ---
+    # Usar %LOCALAPPDATA% en Windows para evitar errores de permisos en Program Files
+    if os.name == 'nt':
+        BASE_DATA_DIR = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 'LegajoDigitalDIRESA')
+    else:
+        BASE_DATA_DIR = os.path.join(os.path.expanduser('~'), '.legajo_digital')
+
+    # Crear directorios si no existen
+    LOG_DIR = os.path.join(BASE_DATA_DIR, 'logs')
+    TEMP_PDFS_DIR = os.path.join(BASE_DATA_DIR, 'temp_pdfs')
+    TEMP_UPLOADS_DIR = os.path.join(BASE_DATA_DIR, 'temp_uploads')
+
+    for directory in [LOG_DIR, TEMP_PDFS_DIR, TEMP_UPLOADS_DIR]:
+        os.makedirs(directory, exist_ok=True)

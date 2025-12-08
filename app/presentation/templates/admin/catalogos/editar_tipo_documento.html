@@ -1,0 +1,114 @@
+{% extends 'layouts/dashboard.html' %}
+{% block title %}Editar Tipo de Documento - Legajo Digital Diresa{% endblock %}
+
+{% block dashboard_content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <!-- Columna izquierda: Editar información básica -->
+        <div class="col-md-6">
+            <div class="card shadow mb-4">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-pencil me-2"></i>
+                        Editar Tipo de Documento
+                    </h5>
+                </div>
+
+                <div class="card-body">
+                    <form method="POST">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+
+                        <div class="mb-3">
+                            <label for="nombre_tipo" class="form-label">
+                                Nombre del Tipo de Documento <span class="text-danger">*</span>
+                            </label>
+                            <input type="text" class="form-control" id="nombre_tipo" name="nombre_tipo"
+                                value="{{ tipo_documento.nombre_tipo }}" required maxlength="150"
+                                placeholder="Ej: DNI, Título Profesional, etc.">
+                        </div>
+
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-success">
+                                <i class="bi bi-save me-2"></i>
+                                Actualizar Tipo
+                            </button>
+                            <a href="{{ url_for('admin_catalogo.listar_tipos_documento') }}" class="btn btn-secondary">
+                                <i class="bi bi-arrow-left me-2"></i>
+                                Volver al Listado
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Columna derecha: Gestionar secciones asociadas -->
+        <div class="col-md-6">
+            <div class="card shadow mb-4">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-link me-2"></i>
+                        Secciones Asociadas
+                    </h5>
+                </div>
+
+                <div class="card-body">
+                    <!-- Lista de secciones asociadas -->
+                    {% if secciones_asociadas %}
+                    <ul class="list-group mb-3" id="seccionesAsociadas">
+                        {% for seccion in secciones_asociadas %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center text-dark">
+                            <span>
+                                <i class="bi bi-folder me-2 text-primary"></i>
+                                {{ seccion.nombre_seccion }}
+                            </span>
+                            <button type="button" class="btn btn-sm btn-danger btn-remover-seccion"
+                                data-id-tipo="{{ tipo_documento.id_tipo }}" data-id-seccion="{{ seccion.id_seccion }}"
+                                data-nombre-seccion="{{ seccion.nombre_seccion }}" title="Remover asociación">
+                                <i class="bi bi-x-lg"></i>
+                            </button>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <div class="alert alert-warning" role="alert" id="noSeccionesMsg">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        Este tipo de documento no está asociado a ninguna sección todavía.
+                    </div>
+                    {% endif %}
+
+                    <!-- Formulario para agregar nueva sección -->
+                    <div class="card bg-light">
+                        <div class="card-body">
+                            <h6 class="card-title">
+                                <i class="bi bi-plus-circle me-2"></i>
+                                Agregar Sección
+                            </h6>
+                            <form id="formAgregarSeccion" data-id-tipo="{{ tipo_documento.id_tipo }}">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                                <div class="input-group">
+                                    <select class="form-select" id="selectSeccion" required>
+                                        <option value="">-- Seleccione una sección --</option>
+                                        {% for seccion in todas_secciones %}
+                                        <option value="{{ seccion.id_seccion }}">{{ seccion.nombre_seccion }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="bi bi-plus"></i> Agregar
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="{{ url_for('static', filename='js/catalogos.js') }}"></script>
+{% endblock %}

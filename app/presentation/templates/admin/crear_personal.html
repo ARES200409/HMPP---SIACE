@@ -11,7 +11,7 @@
         <li class="breadcrumb-item"><a href="{{ url_for('legajo.listar_personal') }}">Personal</a></li>
         <li class="breadcrumb-item active">Crear Nuevo</li>
     </ul>
-    
+
     <!-- ENCABEZADO -->
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
         <div>
@@ -24,24 +24,24 @@
             <i class="bi bi-arrow-left"></i> Volver
         </a>
     </div>
-    
+
     <!-- ERRORES -->
     {% if form.errors %}
-        <div class="alert alert-danger" role="alert">
-            <i class="bi bi-exclamation-circle-fill"></i>
-            <div>
-                <strong>Por favor corrige los siguientes errores:</strong>
-                <ul style="margin: 0.5rem 0 0 0; padding-left: 1.5rem;">
+    <div class="alert alert-danger" role="alert">
+        <i class="bi bi-exclamation-circle-fill"></i>
+        <div>
+            <strong>Por favor corrige los siguientes errores:</strong>
+            <ul style="margin: 0.5rem 0 0 0; padding-left: 1.5rem;">
                 {% for field, errors in form.errors.items() %}
-                    {% for error in errors %}
-                    <li>{{ error }}</li>
-                    {% endfor %}
+                {% for error in errors %}
+                <li>{{ error }}</li>
                 {% endfor %}
-                </ul>
-            </div>
+                {% endfor %}
+            </ul>
         </div>
+    </div>
     {% endif %}
-    
+
     <!-- FORMULARIO -->
     <div class="card">
         <div class="card-header">
@@ -72,13 +72,13 @@
                     <div class="col-md-4">
                         {{ render_field(form.sexo) }}
                     </div>
-                     <div class="col-md-4">
+                    <div class="col-md-4">
                         {{ render_field(form.nacionalidad) }}
                     </div>
                 </div>
 
                 <hr>
-                <h5 class="mb-3 mt-4 text-primary">2. Datos de Contacto y Laborales</h5>
+                <h5 class="mb-3 mt-4 text-primary">2. Datos de Contacto y Laborales (Opcional)</h5>
                 <div class="row mb-3">
                     <div class="col-md-4">
                         {{ render_field(form.email) }}
@@ -96,16 +96,16 @@
                         {{ render_field(form.direccion) }}
                     </div>
                 </div>
-                
+
                 <div class="row mb-4">
                     <div class="col-md-6">
                         {{ render_field(form.id_unidad) }}
                     </div>
-                     <div class="col-md-6">
+                    <div class="col-md-6">
                         {{ render_field(form.fecha_ingreso, class="form-control datepicker") }}
                     </div>
                 </div>
-                
+
                 <hr class="my-4">
 
                 <div class="d-flex justify-content-end">
@@ -113,13 +113,13 @@
                         <i class="bi bi-save-fill me-2"></i> Registrar Personal
                     </button>
                 </div>
-                </form>
+            </form>
         </div>
     </div>
-{% endblock %}
+    {% endblock %}
 
 
-{% block scripts %}
-{{ super() }}
-<script src="{{ url_for('static', filename='js/crear_personal.js') }}"></script>
-{% endblock %}
+    {% block scripts %}
+    {{ super() }}
+    <script src="{{ url_for('static', filename='js/crear_personal.js') }}"></script>
+    {% endblock %}

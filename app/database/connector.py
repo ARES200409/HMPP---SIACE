@@ -7,12 +7,15 @@ from flask import g, current_app
 def _get_db_connection(username, password):
     try:
         # Construye la cadena de conexión usando la configuración de la aplicación.
+        # Se agrega TrustServerCertificate=yes para compatibilidad con ODBC Driver 18
         conn_str = (
-            f"DRIVER={current_app.config['DB_DRIVER']};"
+            f"DRIVER={{{current_app.config['DB_DRIVER']}}};"
             f"SERVER={current_app.config['DB_SERVER']};"
             f"DATABASE={current_app.config['DB_DATABASE']};"
             f"UID={username};"
             f"PWD={password};"
+            "TrustServerCertificate=yes;"
+            "Encrypt=yes;"
         )
         # Establece y devuelve la conexión.
         return pyodbc.connect(conn_str)
@@ -81,4 +84,4 @@ def close_db(e=None):
 # Define una función para inicializar el manejo de la base de datos en la aplicación Flask.
 def init_app_db(app):
     # Registra la función 'close_db' para que se ejecute al final de cada contexto de aplicación.
-    app.teardown_appcontext(close_db) 
+    app.teardown_appcontext(close_db)

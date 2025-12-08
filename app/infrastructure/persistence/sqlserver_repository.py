@@ -727,10 +727,25 @@ class SqlServerPersonalRepository(IPersonalRepository):
     def create(self, form_data):
         conn = get_db_write()
         cursor = conn.cursor()
-        params = (form_data.get('dni'), form_data.get('nombres'), form_data.get('apellidos'), form_data.get('sexo'),
+        
+        # Normalizar nombres y apellidos a formato título (Primera Letra Mayúscula)
+        # Usar .lower() primero para manejar correctamente caracteres especiales como Ñ
+        nombres = form_data.get('nombres', '').strip().lower().title() if form_data.get('nombres') else None
+        apellidos = form_data.get('apellidos', '').strip().lower().title() if form_data.get('apellidos') else None
+        
+        # Convertir valores vacíos o '0' a ID 19 ('No especificado') para mantener integridad referencial
+        id_unidad = form_data.get('id_unidad')
+        if id_unidad in ('0', '', None, 0):
+            id_unidad = 19  # ID de 'No especificado' en unidad_administrativa
+        
+        fecha_ingreso = form_data.get('fecha_ingreso')
+        if not fecha_ingreso:
+            fecha_ingreso = None
+        
+        params = (form_data.get('dni'), nombres, apellidos, form_data.get('sexo'),
                   form_data.get('fecha_nacimiento'), form_data.get('direccion'), form_data.get('telefono'),
-                  form_data.get('email'), form_data.get('estado_civil'), form_data.get('nacionalidad'),
-                  form_data.get('id_unidad'), form_data.get('fecha_ingreso'))
+                  form_data.get('email') or None, form_data.get('estado_civil') or None, form_data.get('nacionalidad'),
+                  id_unidad, fecha_ingreso)
         cursor.execute("{CALL sp_registrar_personal(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)}", params)
         new_id = cursor.fetchone()[0]
         conn.commit()
@@ -784,21 +799,35 @@ class SqlServerPersonalRepository(IPersonalRepository):
     def update(self, personal_id, form_data):
         conn = get_db_write()
         cursor = conn.cursor()
+        
+        # Normalizar nombres y apellidos a formato título (Primera Letra Mayúscula)
+        nombres = form_data.get('nombres', '').strip().lower().title() if form_data.get('nombres') else None
+        apellidos = form_data.get('apellidos', '').strip().lower().title() if form_data.get('apellidos') else None
+        
+        # Convertir valores vacíos o '0' a ID 19 ('No especificado') para mantener integridad referencial
+        id_unidad = form_data.get('id_unidad')
+        if id_unidad in ('0', '', None, 0):
+            id_unidad = 19  # ID de 'No especificado' en unidad_administrativa
+        
+        fecha_ingreso = form_data.get('fecha_ingreso')
+        if not fecha_ingreso:
+            fecha_ingreso = None
+        
         # Llama a un SP para actualizar los datos del personal.
         params = (
             personal_id,
             form_data.get('dni'),
-            form_data.get('nombres'),
-            form_data.get('apellidos'),
+            nombres,
+            apellidos,
             form_data.get('sexo'),
             form_data.get('fecha_nacimiento'),
             form_data.get('direccion'),
             form_data.get('telefono'),
-            form_data.get('email'),
-            form_data.get('estado_civil'),
+            form_data.get('email') or None,
+            form_data.get('estado_civil') or None,
             form_data.get('nacionalidad'),
-            form_data.get('id_unidad'),
-            form_data.get('fecha_ingreso')
+            id_unidad,
+            fecha_ingreso
         )
         cursor.execute("{CALL sp_actualizar_personal(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)}", params)
         conn.commit()
@@ -1054,6 +1083,208 @@ class SqlServerPersonalRepository(IPersonalRepository):
                 logger.error(f"Error al eliminar permanentemente documento {document_id} (ambos métodos fallaron): {delete_error}")
                 raise
 
+    # ========================================================================
+    # MÉTODOS PARA GESTIÓN DE SECCIONES (AdministradorLegajos)
+    # ========================================================================
+    
+    def get_all_secciones(self):
+        """Obtiene todas las secciones de legajo."""
+        conn = get_db_read()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT id_seccion, nombre_seccion FROM legajo_secciones ORDER BY nombre_seccion")
+            return [{'id_seccion': row.id_seccion, 'nombre_seccion': row.nombre_seccion} for row in cursor.fetchall()]
+        finally:
+            cursor.close()
+    
+    def get_seccion_by_id(self, id_seccion):
+        """Obtiene una sección por su ID."""
+        conn = get_db_read()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT id_seccion, nombre_seccion FROM legajo_secciones WHERE id_seccion = ?", id_seccion)
+            row = cursor.fetchone()
+            return {'id_seccion': row.id_seccion, 'nombre_seccion': row.nombre_seccion} if row else None
+        finally:
+            cursor.close()
+    
+    def create_seccion(self, nombre_seccion):
+        """Crea una nueva sección de legajo."""
+        conn = get_db_write()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("INSERT INTO legajo_secciones (nombre_seccion) VALUES (?)", nombre_seccion)
+            conn.commit()
+            cursor.execute("SELECT @@IDENTITY as id_seccion")
+            return cursor.fetchone()[0]
+        except Exception as e:
+            conn.rollback()
+            raise e
+        finally:
+            cursor.close()
+    
+    def update_seccion(self, id_seccion, nombre_seccion):
+        """Actualiza una sección existente."""
+        conn = get_db_write()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("UPDATE legajo_secciones SET nombre_seccion = ? WHERE id_seccion = ?", 
+                          nombre_seccion, id_seccion)
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            conn.rollback()
+            raise e
+        finally:
+            cursor.close()
+    
+    def delete_seccion(self, id_seccion):
+        """Elimina una sección de legajo."""
+        conn = get_db_write()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("DELETE FROM legajo_secciones WHERE id_seccion = ?", id_seccion)
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            conn.rollback()
+            raise e
+        finally:
+            cursor.close()
+
+    # ========================================================================
+    # MÉTODOS PARA GESTIÓN DE TIPOS DE DOCUMENTO (AdministradorLegajos)
+    # ========================================================================
+    
+    def get_all_tipos_documento(self):
+        """Obtiene todos los tipos de documento."""
+        conn = get_db_read()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT id_tipo, nombre_tipo FROM tipo_documento ORDER BY nombre_tipo")
+            return [{'id_tipo': row.id_tipo, 'nombre_tipo': row.nombre_tipo} for row in cursor.fetchall()]
+        finally:
+            cursor.close()
+    
+    def get_tipo_documento_by_id(self, id_tipo):
+        """Obtiene un tipo de documento por su ID."""
+        conn = get_db_read()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT id_tipo, nombre_tipo FROM tipo_documento WHERE id_tipo = ?", id_tipo)
+            row = cursor.fetchone()
+            return {'id_tipo': row.id_tipo, 'nombre_tipo': row.nombre_tipo} if row else None
+        finally:
+            cursor.close()
+    
+    def create_tipo_documento(self, nombre_tipo):
+        """Crea un nuevo tipo de documento."""
+        conn = get_db_write()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("INSERT INTO tipo_documento (nombre_tipo) VALUES (?)", nombre_tipo)
+            conn.commit()
+            cursor.execute("SELECT @@IDENTITY as id_tipo")
+            return cursor.fetchone()[0]
+        except Exception as e:
+            conn.rollback()
+            raise e
+        finally:
+            cursor.close()
+    
+    def update_tipo_documento(self, id_tipo, nombre_tipo):
+        """Actualiza un tipo de documento existente."""
+        conn = get_db_write()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("UPDATE tipo_documento SET nombre_tipo = ? WHERE id_tipo = ?", 
+                          nombre_tipo, id_tipo)
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            conn.rollback()
+            raise e
+        finally:
+            cursor.close()
+    
+    def delete_tipo_documento(self, id_tipo):
+        """Elimina un tipo de documento."""
+        conn = get_db_write()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("DELETE FROM tipo_documento WHERE id_tipo = ?", id_tipo)
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            conn.rollback()
+            raise e
+        finally:
+            cursor.close()
+
+    # ========================================================================
+    # MÉTODOS PARA GESTIÓN DE RELACIÓN TIPO_DOCUMENTO - SECCIÓN
+    # ========================================================================
+    
+    def get_secciones_by_tipo_documento(self, id_tipo):
+        """Obtiene las secciones asociadas a un tipo de documento."""
+        conn = get_db_read()
+        cursor = conn.cursor()
+        try:
+            query = """
+            SELECT ls.id_seccion, ls.nombre_seccion 
+            FROM tipo_documento_seccion_relacion tdsr
+            JOIN legajo_secciones ls ON tdsr.id_seccion = ls.id_seccion
+            WHERE tdsr.id_tipo_documento = ?
+            ORDER BY ls.nombre_seccion
+            """
+            cursor.execute(query, id_tipo)
+            return [{'id_seccion': row.id_seccion, 'nombre_seccion': row.nombre_seccion} for row in cursor.fetchall()]
+        finally:
+            cursor.close()
+    
+    def add_tipo_documento_to_seccion(self, id_tipo, id_seccion):
+        """Asocia un tipo de documento a una sección."""
+        conn = get_db_write()
+        cursor = conn.cursor()
+        try:
+            # Verificar si ya existe la relación
+            cursor.execute(
+                "SELECT 1 FROM tipo_documento_seccion_relacion WHERE id_tipo_documento = ? AND id_seccion = ?", 
+                id_tipo, id_seccion
+            )
+            if cursor.fetchone():
+                return False  # Ya existe la relación
+            
+            cursor.execute(
+                "INSERT INTO tipo_documento_seccion_relacion (id_tipo_documento, id_seccion) VALUES (?, ?)", 
+                id_tipo, id_seccion
+            )
+            conn.commit()
+            return True
+        except Exception as e:
+            conn.rollback()
+            raise e
+        finally:
+            cursor.close()
+    
+    def remove_tipo_documento_from_seccion(self, id_tipo, id_seccion):
+        """Elimina la asociación entre un tipo de documento y una sección."""
+        conn = get_db_write()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "DELETE FROM tipo_documento_seccion_relacion WHERE id_tipo_documento = ? AND id_seccion = ?", 
+                id_tipo, id_seccion
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            conn.rollback()
+            raise e
+        finally:
+            cursor.close()
+
+
 
 # Implementación completa y corregida del repositorio de auditoría.
 class SqlServerAuditoriaRepository(IAuditoriaRepository):
@@ -1225,178 +1456,98 @@ class SqlServerBackupRepository:
 
 class SqlServerSolicitudRepository:
     
+    def get_pending_requests(self):
+        """Obtiene todas las solicitudes de modificación pendientes."""
+        conn = get_db_read()
+        cursor = conn.cursor()
+        try:
+            query = """
+            SELECT 
+                sm.id_solicitud,
+                sm.id_personal,
+                sm.id_usuario_solicitante,
+                sm.campo_modificado,
+                sm.valor_anterior,
+                sm.valor_nuevo,
+                sm.estado,
+                sm.fecha_solicitud,
+                p.nombres + ' ' + p.apellidos AS nombre_personal,
+                p.dni
+            FROM solicitudes_modificacion sm
+            LEFT JOIN personal p ON sm.id_personal = p.id_personal
+            WHERE sm.estado = 'Pendiente'
+            ORDER BY sm.fecha_solicitud DESC
+            """
+            cursor.execute(query)
+            return [_row_to_dict(cursor, row) for row in cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"Error al obtener solicitudes pendientes: {e}")
+            return []
+        finally:
+            cursor.close()
+    
+    def get_by_id(self, solicitud_id):
+        """Obtiene una solicitud por su ID."""
+        conn = get_db_read()
+        cursor = conn.cursor()
+        try:
+            query = """
+            SELECT 
+                sm.id_solicitud,
+                sm.id_personal,
+                sm.id_usuario_solicitante,
+                sm.campo_modificado,
+                sm.valor_anterior,
+                sm.valor_nuevo AS ruta_nuevo_archivo,
+                sm.estado,
+                sm.fecha_solicitud
+            FROM solicitudes_modificacion sm
+            WHERE sm.id_solicitud = ?
+            """
+            cursor.execute(query, solicitud_id)
+            row = cursor.fetchone()
+            return _row_to_dict(cursor, row) if row else None
+        finally:
+            cursor.close()
+    
+    def process_request(self, solicitud_id, action):
+        """Procesa una solicitud (aprobar/rechazar)."""
+        conn = get_db_write()
+        cursor = conn.cursor()
+        try:
+            nuevo_estado = 'Aprobado' if action == 'aprobar' else 'Rechazado'
+            cursor.execute(
+                "UPDATE solicitudes_modificacion SET estado = ? WHERE id_solicitud = ?",
+                nuevo_estado, solicitud_id
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Error al procesar solicitud {solicitud_id}: {e}")
+            return False
+        finally:
+            cursor.close()
+    
     def obtener_id_personal_por_documento(self, id_documento):
         """Helper para obtener el id_personal dueño de un documento."""
         conn = get_db_read()
         cursor = conn.cursor()
         try:
-            # Consulta directa segura
             cursor.execute("SELECT id_personal FROM documentos WHERE id_documento = ?", id_documento)
             row = cursor.fetchone()
             return row[0] if row else None
         finally:
             cursor.close()
-
-    def creating_solicitud(self, data):
-        return self.crear_solicitud(data)
-
-    def crear_solicitud(self, data):
-        """
-        Inserta usando las columnas existentes de 'solicitudes_modificacion'.
-        """
-        conn = get_db_write()
-        cursor = conn.cursor()
-        try:
-            # Usamos las columnas estándar de tu tabla
-            query = """
-            INSERT INTO solicitudes_modificacion 
-            (id_personal, id_usuario_solicitante, fecha_solicitud, campo_modificado, valor_anterior, valor_nuevo, estado)
-            VALUES (?, ?, GETDATE(), ?, ?, ?, 'pendiente')
-            """
-            cursor.execute(query, 
-                data['id_personal'],
-                data['id_usuario_solicitante'],
-                data['campo_modificado'], # Contiene ID Documento
-                data['valor_anterior'],   # Contiene Motivo
-                data['valor_nuevo']       # Contiene Ruta Archivo
-            )
-            conn.commit()
-            return True
-        except Exception as e:
-            import logging
-            logging.getLogger(__name__).error(f"Error BD creando solicitud: {e}")
-            conn.rollback()
-            raise e
-        finally:
-            cursor.close()
-
-    def get_pending_requests(self):
-        """
-        Lista recuperando los datos de las columnas reutilizadas.
-        """
-        conn = get_db_read()
-        cursor = conn.cursor()
-        try:
-            # Hacemos el JOIN interpretando 'campo_modificado' como el ID del documento
-            query = """
-            SELECT 
-                s.id_solicitud, 
-                s.fecha_solicitud, 
-                s.valor_anterior as motivo,              -- Recuperamos Motivo
-                s.valor_nuevo as ruta_nuevo_archivo,     -- Recuperamos Ruta
-                u.username,
-                p.nombres, 
-                p.apellidos,
-                d.nombre_archivo as nombre_doc_original
-            FROM solicitudes_modificacion s
-            JOIN usuarios u ON s.id_usuario_solicitante = u.id_usuario
-            LEFT JOIN personal p ON u.id_personal = p.id_personal
-            -- Truco: Convertimos campo_modificado a INT para el JOIN con documentos
-            LEFT JOIN documentos d ON TRY_CAST(s.campo_modificado AS INT) = d.id_documento
-            WHERE s.estado = 'pendiente'
-              AND s.valor_nuevo LIKE 'uploads/%' -- Filtro de seguridad para traer solo cambios de archivo
-            ORDER BY s.fecha_solicitud DESC
-            """
-            cursor.execute(query)
-            return [_row_to_dict(cursor, row) for row in cursor.fetchall()]
-        finally:
-            cursor.close()
-
-    def process_request(self, request_id, action):
-        """
-        Procesa la solicitud. Lee el archivo del disco y actualiza el VARBINARY.
-        """
-        import os
-        from flask import current_app
-        
-        conn = get_db_write()
-        cursor = conn.cursor()
-        try:
-            conn.autocommit = False
-
-            if action == 'rechazar':
-                cursor.execute("UPDATE solicitudes_modificacion SET estado = 'rechazada', fecha_revision = GETDATE() WHERE id_solicitud = ?", request_id)
-            
-            elif action == 'aprobar':
-                # 1. Obtener datos
-                cursor.execute("SELECT campo_modificado, valor_nuevo FROM solicitudes_modificacion WHERE id_solicitud = ?", request_id)
-                solicitud = cursor.fetchone()
-                
-                if not solicitud:
-                    raise Exception("Solicitud no encontrada")
-                
-                id_doc_str, nueva_ruta = solicitud
-                
-                # --- CORRECCIÓN DEL ERROR DE VALUEERROR ---
-                # El dato viene como "Documento ID: 1", así que debemos limpiarlo antes de convertir a int
-                if id_doc_str and isinstance(id_doc_str, str) and "Documento ID:" in id_doc_str:
-                    # Reemplaza el texto por vacío y quita espacios, dejando solo el número "1"
-                    id_doc = int(id_doc_str.replace("Documento ID:", "").strip())
-                else:
-                    # Si por alguna razón ya es un número o string limpio
-                    id_doc = int(id_doc_str)
-                # -----------------------------------------
-
-                # 2. Preparar archivo
-                nuevo_nombre = nueva_ruta.replace('\\', '/').split('/')[-1] 
-                ruta_fisica = os.path.join(current_app.root_path, 'presentation/static', nueva_ruta)
-                
-                if not os.path.exists(ruta_fisica):
-                    raise FileNotFoundError(f"El archivo temporal no se encuentra en: {ruta_fisica}")
-
-                # Leer binario para actualizar la columna 'archivo'
-                with open(ruta_fisica, 'rb') as f:
-                    file_bytes = f.read()
-
-                # 3. Actualizar documento (VARBINARY y Nombre)
-                cursor.execute("""
-                    UPDATE documentos 
-                    SET archivo = ?, 
-                        nombre_archivo = ?, 
-                        fecha_subida = GETDATE() 
-                    WHERE id_documento = ?
-                """, (file_bytes, nuevo_nombre, id_doc))
-
-                # 4. Aprobar solicitud
-                cursor.execute("UPDATE solicitudes_modificacion SET estado = 'aprobada', fecha_revision = GETDATE() WHERE id_solicitud = ?", request_id)
-
-            conn.commit()
-            return True
-        except Exception as e:
-            conn.rollback()
-            # Importante: Loguear el error para verlo en la consola
-            import logging
-            logging.getLogger(__name__).error(f"Error procesando solicitud {request_id}: {e}")
-            return False
-        finally:
-            if conn:
-                conn.autocommit = True
-            cursor.close()
-            
-    def get_by_id(self, request_id):
-        conn = get_db_read()
-        cursor = conn.cursor()
-        try:
-            # Mapeamos valor_nuevo a 'ruta_nuevo_archivo' para que la vista lo entienda
-            query = """
-            SELECT *, valor_nuevo as ruta_nuevo_archivo 
-            FROM solicitudes_modificacion 
-            WHERE id_solicitud = ?
-            """
-            cursor.execute(query, request_id)
-            row = cursor.fetchone()
-            return _row_to_dict(cursor, row)
-        finally:
-            cursor.close()
-
+    
     def crear_solicitud_modificacion(self, data):
         """
-        Ejecuta el SP sp_solicitar_modificacion_personal.
+        Crea una solicitud de modificación en la tabla solicitudes_modificacion.
         """
         conn = get_db_write()
         cursor = conn.cursor()
         try:
-            # Si id_personal no viene del usuario (ej. es admin), 
+            # Si no viene id_personal en 'data', intentamos inferirlo
             # deberíamos obtenerlo del documento, pero asumiremos que viene en 'data'.
             if not data.get('id_personal'):
                  # Lógica opcional: obtener id_personal desde el documento si falta

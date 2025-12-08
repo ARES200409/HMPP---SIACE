@@ -183,9 +183,13 @@ class UsuarioService:
             password = user_data.get('password', '').strip()
             id_rol = user_data.get('id_rol')
             
-            # Validaciones básicas
-            if not username or not email or not password or not id_rol:
-                return "Todos los campos son obligatorios", "warning"
+            # Validaciones básicas - email es opcional para creación automática
+            if not username or not password or not id_rol:
+                return "Usuario, contraseña y rol son obligatorios", "warning"
+            
+            # Si no hay email, generar uno por defecto basado en el username (DNI)
+            if not email:
+                email = f"{username}@noespecificado.local"
             
             if len(username) < 3:
                 return "El nombre de usuario debe tener al menos 3 caracteres", "warning"
@@ -198,10 +202,11 @@ class UsuarioService:
             if existing_user:
                 return f"El nombre de usuario '{username}' ya existe en el sistema", "warning"
             
-            # Verificar que el email no exista
-            existing_email = self._usuario_repo.find_by_email(email)
-            if existing_email:
-                return f"El correo electrónico '{email}' ya está registrado", "warning"
+            # Verificar que el email no exista (si es un email real, no el placeholder)
+            if not email.endswith('@noespecificado.local'):
+                existing_email = self._usuario_repo.find_by_email(email)
+                if existing_email:
+                    return f"El correo electrónico '{email}' ya está registrado", "warning"
             
             # Generar hash de la contraseña
             password_hash = generate_password_hash(password)

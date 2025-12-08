@@ -59,13 +59,17 @@ def load_user(user_id):
 def configure_logging(app):
     """Configura el sistema de logging para la aplicación."""
     if not app.debug:
-        if not os.path.exists('logs'):
-            os.mkdir('logs')
+        # Usar el directorio de logs configurado en Config (en %LOCALAPPDATA%)
+        log_dir = app.config.get('LOG_DIR', 'logs')
+        if not os.path.exists(log_dir):
+            os.makedirs(log_dir, exist_ok=True)
+        
+        log_file = os.path.join(log_dir, 'app.log')
         
         # Usar delay=True para evitar problemas en Windows con archivo bloqueado
         # Aumentar maxBytes a 50MB para reducir rotaciones frecuentes
         file_handler = RotatingFileHandler(
-            'logs/app.log', 
+            log_file, 
             maxBytes=50*1024*1024,  # 50 MB
             backupCount=5,
             delay=True  # No crear el archivo hasta el primer log
@@ -201,6 +205,7 @@ def create_app():
         from .presentation.routes.error_routes import error_bp
         from .presentation.routes.personal_routes import personal_bp # <-- Nuevo blueprint para empleados
         from .presentation.routes.pdf_upload_routes import pdf_bp # <-- Nuevo blueprint para PDF
+        from .presentation.routes.admin_catalogo_routes import admin_catalogo_bp # <-- Nuevo blueprint para catálogos
         # Registrar Blueprints
         app.register_blueprint(auth_bp)
         app.register_blueprint(legajo_bp)
@@ -209,6 +214,8 @@ def create_app():
         app.register_blueprint(error_bp)
         app.register_blueprint(personal_bp) # <-- Registrar blueprint de empleados
         app.register_blueprint(pdf_bp) # <-- Registrar blueprint de PDF
+        app.register_blueprint(admin_catalogo_bp) # <-- Registrar blueprint de catálogos
+
 
         @app.route('/')
         def index():

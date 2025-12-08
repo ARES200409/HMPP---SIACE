@@ -1,0 +1,102 @@
+{% extends 'layouts/dashboard.html' %}
+{% block title %}Gestión de Tipos de Documento - Legajo Digital Diresa{% endblock %}
+
+{% block dashboard_content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-12">
+            <div class="card shadow">
+                <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="bi bi-file-earmark-text me-2"></i>
+                        Gestión de Tipos de Documento
+                    </h5>
+                    <div>
+                        <a href="{{ url_for('admin_catalogo.crear_tipo_documento') }}" class="btn btn-light btn-sm">
+                            <i class="bi bi-plus me-1"></i>
+                            Nuevo Tipo
+                        </a>
+                        <a href="{{ url_for('legajo.dashboard') }}" class="btn btn-outline-light btn-sm">
+                            <i class="bi bi-arrow-left me-1"></i>
+                            Volver
+                        </a>
+                    </div>
+                </div>
+
+                <div class="card-body">
+                    {% if tipos_documento %}
+                    <div class="table-responsive">
+                        <table class="table table-hover table-striped">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th style="width: 10%;">ID</th>
+                                    <th style="width: 60%;">Nombre del Tipo de Documento</th>
+                                    <th style="width: 30%;" class="text-center">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for tipo in tipos_documento %}
+                                <tr>
+                                    <td>{{ tipo.id_tipo }}</td>
+                                    <td><strong>{{ tipo.nombre_tipo }}</strong></td>
+                                    <td class="text-center">
+                                        <a href="{{ url_for('admin_catalogo.editar_tipo_documento', id_tipo=tipo.id_tipo) }}"
+                                            class="btn btn-sm btn-warning" title="Editar y Gestionar Secciones">
+                                            <i class="bi bi-pencil"></i>
+                                        </a>
+                                        <button type="button" class="btn btn-sm btn-danger"
+                                            onclick="confirmarEliminacion({{ tipo.id_tipo }}, '{{ tipo.nombre_tipo }}')"
+                                            title="Eliminar">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-info" role="alert">
+                        <i class="bi bi-info-circle me-2"></i>
+                        No hay tipos de documento registrados.
+                        <a href="{{ url_for('admin_catalogo.crear_tipo_documento') }}" class="alert-link">Crear el
+                            primer tipo</a>.
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Formulario oculto para eliminación -->
+<form id="deleteForm" method="POST" action="" style="display: none;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+</form>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script nonce="{{ csp_nonce() }}">
+    function confirmarEliminacion(id, nombre) {
+        Swal.fire({
+            title: '¿Eliminar tipo de documento?',
+            html: `¿Está seguro de eliminar el tipo <strong>"${nombre}"</strong>?<br><br>` +
+                `<span class="text-danger">⚠️ Si hay documentos de este tipo, la eliminación fallará.</span>`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#3085d6',
+            confirmButtonText: 'Sí, eliminar',
+            cancelButtonText: 'Cancelar'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                const form = document.getElementById('deleteForm');
+                form.action = `{{ url_for('admin_catalogo.eliminar_tipo_documento', id_tipo=0) }}`.replace('/0', `/${id}`);
+                form.submit();
+            }
+        });
+    }
+</script>
+{% endblock %}

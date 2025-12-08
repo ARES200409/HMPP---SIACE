@@ -1,0 +1,47 @@
+{% extends 'layouts/dashboard.html' %}
+{% block title %}Crear Sección - Legajo Digital Diresa{% endblock %}
+
+{% block dashboard_content %}
+<div class="container-fluid mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-8 col-lg-6">
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-plus me-2"></i>
+                        Crear Nueva Sección
+                    </h5>
+                </div>
+
+                <div class="card-body">
+                    <form method="POST">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+
+                        <div class="mb-3">
+                            <label for="nombre_seccion" class="form-label">
+                                Nombre de la Sección <span class="text-danger">*</span>
+                            </label>
+                            <input type="text" class="form-control" id="nombre_seccion" name="nombre_seccion" required
+                                maxlength="150" placeholder="Ej: Datos Personales, Formación Académica, etc.">
+                            <div class="form-text">
+                                Este nombre se mostrará en los formularios de carga de documentos.
+                            </div>
+                        </div>
+
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-save me-2"></i>
+                                Crear Sección
+                            </button>
+                            <a href="{{ url_for('admin_catalogo.listar_secciones') }}" class="btn btn-secondary">
+                                <i class="bi bi-x me-2"></i>
+                                Cancelar
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

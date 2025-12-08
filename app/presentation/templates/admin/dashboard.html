@@ -30,5 +30,27 @@
         </a>
     </div>
 
+    <div class="col-md-6 col-lg-4">
+        <a href="{{ url_for('admin_catalogo.listar_secciones') }}" class="dashboard-card settings">
+            <div class="card-icon">
+                <i class="bi bi-folder"></i>
+            </div>
+            <h4>Gestionar Secciones</h4>
+            <p class="card-description">Crear y administrar secciones de legajo.</p>
+            <div class="ingresar-link">Ingresar ></div>
+        </a>
+    </div>
+
+    <div class="col-md-6 col-lg-4">
+        <a href="{{ url_for('admin_catalogo.listar_tipos_documento') }}" class="dashboard-card reports">
+            <div class="card-icon">
+                <i class="bi bi-file-earmark-text"></i>
+            </div>
+            <h4>Gestionar Tipos de Documento</h4>
+            <p class="card-description">Administrar tipos de documento y sus secciones.</p>
+            <div class="ingresar-link">Ingresar ></div>
+        </a>
+    </div>
+
 
 </div>{% endblock %}

@@ -3,6 +3,14 @@
 
 Este es un sistema de gestión de legajos digitales desarrollado en Python con el framework Flask, siguiendo una arquitectura en capas para asegurar su mantenibilidad y escalabilidad.
 
+## 💻 Compatibilidad
+
+**✅ Este sistema se puede instalar en cualquier PC con Windows 10 o superior**
+
+Para más detalles sobre requisitos y compatibilidad:
+- 📖 **[GUIA_RAPIDA.md](GUIA_RAPIDA.md)** - Guía rápida de instalación paso a paso
+- 📋 **[REQUISITOS_SISTEMA.md](REQUISITOS_SISTEMA.md)** - Requisitos detallados y escenarios de uso
+
 ## 1. Requisitos Previos
 
 Antes de comenzar, asegúrate de tener instalado lo siguiente en tu sistema:
@@ -14,9 +22,39 @@ Antes de comenzar, asegúrate de tener instalado lo siguiente en tu sistema:
 
 ## 2. Guía de Instalación
 
-Sigue estos pasos para configurar el entorno de desarrollo local.
+Tienes dos opciones para instalar el sistema:
 
-### 2.1. Clonar el Repositorio
+### 🚀 Opción A: Instalación Automática (Recomendada)
+
+El sistema incluye un instalador automático que configura todo por ti.
+
+#### En Windows:
+1. Haz doble clic en el archivo `INSTALAR.bat`
+2. Sigue las instrucciones en pantalla
+
+#### Usando Python directamente:
+```bash
+# 1. Instalar dependencias mínimas
+pip install pyodbc python-dotenv
+
+# 2. Ejecutar el instalador
+python installer.py
+```
+
+El instalador automáticamente:
+- ✅ Genera el archivo `.env` con una clave secreta segura
+- ✅ Crea la base de datos SQL Server
+- ✅ Crea todas las tablas necesarias
+- ✅ Configura usuarios y permisos de SQL Server
+- ✅ Instala las dependencias de Python
+
+**📖 Para más detalles, consulta [INSTALACION.md](INSTALACION.md)**
+
+### 🔧 Opción B: Instalación Manual
+
+Si prefieres configurar manualmente, sigue estos pasos:
+
+#### 2.1. Clonar el Repositorio
 
 Abre una terminal y clona el repositorio desde GitHub:
 
@@ -25,7 +63,7 @@ git clone https://github.com/carlosDaniel2004/LEGAJO-DIGITAL.git
 cd LEGAJO-DIGITAL
 ```
 
-### 2.2. Crear y Activar el Entorno Virtual
+#### 2.2. Crear y Activar el Entorno Virtual
 
 Es una buena práctica aislar las dependencias del proyecto en un entorno virtual.
 
@@ -37,7 +75,7 @@ python -m venv venv
 .\venv\Scripts\Activate.ps1
 ```
 
-### 2.3. Instalar Dependencias
+#### 2.3. Instalar Dependencias
 
 Con el entorno virtual activado, instala todas las librerías de Python necesarias:
 
@@ -45,44 +83,53 @@ Con el entorno virtual activado, instala todas las librerías de Python necesari
 pip install -r requirements.txt
 ```
 
-### 2.4. Configurar la Base de Datos
-
-1.  Abre SQL Server Management Studio (o tu cliente de SQL preferido).
-2.  Ejecuta el script `BD0409.sql` (o el script de base de datos más reciente) para crear la base de datos `BaseDatosDiresa`, las tablas, los procedimientos almacenados y los roles.
-
-### 2.5. Configurar las Variables de Entorno
+#### 2.4. Configurar las Variables de Entorno
 
 La aplicación se configura mediante un archivo `.env`.
 
 1.  En la raíz del proyecto, crea un archivo llamado `.env`.
-2.  Copia y pega el siguiente contenido en el archivo, **ajustando los valores** a tu configuración local.
+2.  Copia el contenido de `.env.example` y ajusta los valores a tu configuración local.
 
     ```dotenv
-    # Clave secreta para la aplicación Flask (puedes generar una nueva)
-    SECRET_KEY='tu-clave-secreta-aqui'
+    # Configuración de Flask
+    SECRET_KEY=tu-clave-secreta-aqui
+    FLASK_DEBUG=False
 
     # Configuración de la Base de Datos
-    DB_DRIVER='{ODBC Driver 17 for SQL Server}'
-    DB_SERVER='localhost'  # O la dirección de tu instancia de SQL Server
-    DB_DATABASE='BaseDatosDiresa'
+    DB_DRIVER=ODBC Driver 17 for SQL Server
+    DB_SERVER=localhost
+    DB_DATABASE=BaseDatosDiresa
+    DB_USERNAME_WRITE=app_legajo
+    DB_PASSWORD_WRITE=tu-contraseña
+    DB_USERNAME_SYSTEMS_ADMIN=sistemas_admin
+    DB_PASSWORD_SYSTEMS_ADMIN=tu-contraseña-admin
 
-    # Credenciales para el usuario de la aplicación (con permisos limitados)
-    DB_USERNAME='sistemas_admin' # O el usuario que corresponda al rol
-    DB_PASSWORD='S1stemaasAdmin2025' # La contraseña del usuario de la aplicación
-
-    # Credenciales para scripts de mantenimiento (con permisos elevados)
-    DB_USERNAME_SA='sa' # O un usuario con privilegios de administrador
-    DB_PASSWORD_SA='tu-contraseña-de-sa'
-
-    # Configuración de Email (opcional, para 2FA)
-    MAIL_SERVER='smtp.gmail.com'
+    # Configuración de Email
+    MAIL_SERVER=smtp.gmail.com
     MAIL_PORT=587
     MAIL_USE_TLS=True
-    MAIL_USERNAME='tu-correo@gmail.com'
-    MAIL_PASSWORD='tu-contraseña-de-aplicacion-de-gmail'
+    MAIL_USERNAME=tu-correo@gmail.com
+    MAIL_PASSWORD=tu-contraseña-de-aplicacion
+    MAIL_DEFAULT_SENDER=tu-correo@gmail.com
     ```
 
-## 3. Ejecutar la Aplicación
+#### 2.5. Configurar la Base de Datos
+
+Crea la base de datos manualmente usando SQL Server Management Studio o ejecuta el instalador solo para la base de datos.
+
+## 4. Crear el Primer Usuario Administrador
+
+Después de instalar el sistema, necesitas crear el primer usuario administrador:
+
+```bash
+python crear_admin.py
+```
+
+Este script te guiará para crear:
+- Un registro de personal
+- Un usuario con rol de "Sistemas" (administrador)
+
+## 5. Ejecutar la Aplicación
 
 Una vez que todo está configurado, puedes iniciar el servidor de desarrollo de Flask:
 
@@ -90,17 +137,20 @@ Una vez que todo está configurado, puedes iniciar el servidor de desarrollo de 
 python run.py
 ```
 
-La aplicación estará disponible en tu navegador en la dirección `http://127.0.0.1:5000`.
+La aplicación estará disponible en tu navegador en la dirección `http://localhost:5001`.
 
-## 4. Ejecutar Scripts de Utilidad
+## 6. Scripts de Utilidad
 
-El proyecto incluye scripts en la raíz para tareas de mantenimiento:
+El proyecto incluye varios scripts útiles en la raíz:
 
--   **`resetearEmail.py`**: Para cambiar el email de un usuario directamente en la base de datos.
--   **`reset_password_direct.py`**: Para resetear la contraseña de un usuario.
+-   **`installer.py`**: Instalador automático del sistema (configura todo)
+-   **`crear_admin.py`**: Crea el primer usuario administrador
+-   **`resetearEmail.py`**: Cambia el email de un usuario
+-   **`reset_password_direct.py`**: Resetea la contraseña de un usuario
 
 Para ejecutarlos, asegúrate de tener el entorno virtual activado y usa:
 
 ```bash
 python nombre_del_script.py
 ```
+

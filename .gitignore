@@ -25,5 +25,4 @@ logs/
 # Bloque para ignorar archivos de sistema operativo comunes.
 .DS_Store
 Thumbs.db
-*.sql
 *.pdf

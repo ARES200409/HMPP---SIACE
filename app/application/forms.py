@@ -138,7 +138,7 @@ class PersonalForm(FlaskForm):
     ])
     
     email = StringField('Correo Electrónico', validators=[
-        DataRequired(message="El correo electrónico es obligatorio."),
+        Optional(),
         Email(message="Por favor ingrese un correo electrónico válido."),
         Length(max=100, message="El correo no debe exceder 100 caracteres.")
     ])
@@ -164,21 +164,21 @@ class PersonalForm(FlaskForm):
     ], default='Peruana')
     
     id_unidad = SelectField('Unidad Administrativa', coerce=str, 
-                           validators=[DataRequired(message="Debe seleccionar una unidad administrativa.")],
+                           validators=[Optional()],
                            default='0')
     
     fecha_ingreso = DateField('Fecha de Ingreso', format='%Y-%m-%d', 
                              validators=[
-                                 DataRequired(message="La fecha de ingreso es obligatoria."),
+                                 Optional(),
                                  validate_fecha_ingreso
                              ])
     
     submit = SubmitField('Registrar Personal')
 
-    def validate_id_unidad(self, field):
-        """Valida que se haya seleccionado una unidad válida."""
-        if field.data == '0' or not field.data:
-            raise ValidationError('Debe seleccionar una unidad administrativa válida.')
+    # def validate_id_unidad(self, field):
+    #     """Valida que se haya seleccionado una unidad válida."""
+    #     if field.data == '0' or not field.data:
+    #         raise ValidationError('Debe seleccionar una unidad administrativa válida.')
 
 class DocumentoForm(FlaskForm):
     id_seccion = SelectField('Sección del Legajo', coerce=int, validators=[NumberRange(min=1, message="Debe seleccionar una sección.")])

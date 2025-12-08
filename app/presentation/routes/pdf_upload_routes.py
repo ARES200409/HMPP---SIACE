@@ -243,8 +243,9 @@ def upload_legajo_pdf(personal_id=None):
 
             # Guardar el archivo temporalmente
             filename = secure_filename(file.filename)
-            temp_path = os.path.join('temp_uploads', filename)
-            os.makedirs('temp_uploads', exist_ok=True)
+            temp_dir = current_app.config.get('TEMP_UPLOADS_DIR', 'temp_uploads')
+            temp_path = os.path.join(temp_dir, filename)
+            os.makedirs(temp_dir, exist_ok=True)
             file.save(temp_path)
 
             logger.info(f"PDF cargado: {temp_path} para personal ID {id_personal}")
@@ -278,7 +279,8 @@ def upload_legajo_pdf(personal_id=None):
                     estructura_a_usar = ESTRUCTURA_LEGAJO_DEFAULT
 
             # Usar el servicio de separación
-            pdf_service = PdfSplitService('temp_pdfs')
+            temp_pdfs_dir = current_app.config.get('TEMP_PDFS_DIR', 'temp_pdfs')
+            pdf_service = PdfSplitService(temp_pdfs_dir)
             resultados = pdf_service.separar_legajo(
                 temp_path, 
                 estructura_a_usar, 
@@ -430,12 +432,14 @@ def procesar_pdf_api():
 
         # Guardar temporalmente
         filename = secure_filename(file.filename)
-        temp_path = os.path.join('temp_uploads', filename)
-        os.makedirs('temp_uploads', exist_ok=True)
+        temp_dir = current_app.config.get('TEMP_UPLOADS_DIR', 'temp_uploads')
+        temp_path = os.path.join(temp_dir, filename)
+        os.makedirs(temp_dir, exist_ok=True)
         file.save(temp_path)
 
         # Procesar
-        pdf_service = PdfSplitService('temp_pdfs')
+        temp_pdfs_dir = current_app.config.get('TEMP_PDFS_DIR', 'temp_pdfs')
+        pdf_service = PdfSplitService(temp_pdfs_dir)
         resultados = pdf_service.separar_legajo(
             temp_path,
             ESTRUCTURA_LEGAJO_DEFAULT,

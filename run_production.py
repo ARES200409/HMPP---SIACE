@@ -9,8 +9,14 @@ Uso:
 """
 
 import sys
+import webbrowser
+from threading import Timer
 from waitress import serve
 from app import create_app
+
+def open_browser(url):
+    """Abre el navegador predeterminado."""
+    webbrowser.open_new(url)
 
 app = create_app()
 
@@ -55,6 +61,12 @@ if __name__ == "__main__":
     """)
     
     # Iniciar servidor Waitress
+    
+    # Abrir navegador automáticamente después de 1.5 segundos
+    target_url = f"http://{host}:{port}"
+    Timer(1.5, open_browser, args=[target_url]).start()
+
+    # Configuración recomendada para producción:
     # Configuración recomendada para producción:
     serve(
         app,

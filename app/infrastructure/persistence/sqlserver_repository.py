@@ -134,6 +134,7 @@ class SqlServerUsuarioRepository(IUsuarioRepository):
                 u.two_factor_code,
                 u.two_factor_expiry,
                 u.id_personal,
+                u.foto_perfil,
                 r.nombre_rol
             FROM usuarios u
             LEFT JOIN roles r ON u.id_rol = r.id_rol
@@ -165,7 +166,8 @@ class SqlServerUsuarioRepository(IUsuarioRepository):
                         u.activo,
                         u.two_factor_code,
                         u.id_personal,
-                        u.two_factor_expiry
+                        u.two_factor_expiry,
+                        u.foto_perfil
                     FROM usuarios u
                     WHERE u.id_usuario = ?
                     """
@@ -1597,7 +1599,7 @@ class SqlServerSolicitudRepository:
         conn = get_db_write()
         cursor = conn.cursor()
         try:
-            nuevo_estado = 'Aprobado' if action == 'aprobar' else 'Rechazado'
+            nuevo_estado = 'Aprobada' if action == 'aprobar' else 'Rechazada'
             cursor.execute(
                 "UPDATE solicitudes_modificacion SET estado = ? WHERE id_solicitud = ?",
                 nuevo_estado, solicitud_id

@@ -19,14 +19,15 @@
     </div>
 
     {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-            {% for category, message in messages %}
-                <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
-                    {{ message }}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                </div>
-            {% endfor %}
-        {% endif %}
+    {% if messages %}
+    {% for category, message in messages %}
+    <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show"
+        role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}
+    {% endif %}
     {% endwith %}
 
     <div class="row">
@@ -43,14 +44,14 @@
                         <div class="mb-3">
                             {{ form.telefono.label(class="form-label") }}
                             {% if form.telefono.errors %}
-                                {{ form.telefono(class="form-control is-invalid") }}
-                                <div class="invalid-feedback d-block">
-                                    {% for error in form.telefono.errors %}
-                                        <small>{{ error }}</small>
-                                    {% endfor %}
-                                </div>
+                            {{ form.telefono(class="form-control is-invalid") }}
+                            <div class="invalid-feedback d-block">
+                                {% for error in form.telefono.errors %}
+                                <small>{{ error }}</small>
+                                {% endfor %}
+                            </div>
                             {% else %}
-                                {{ form.telefono(class="form-control", placeholder="Ej: +51-987654321") }}
+                            {{ form.telefono(class="form-control", placeholder="Ej: +51-987654321") }}
                             {% endif %}
                             <small class="text-muted d-block mt-1">
                                 <i class="bi bi-info-circle"></i> Ingresa tu teléfono de contacto
@@ -61,14 +62,14 @@
                         <div class="mb-3">
                             {{ form.estado_civil.label(class="form-label") }}
                             {% if form.estado_civil.errors %}
-                                {{ form.estado_civil(class="form-control is-invalid") }}
-                                <div class="invalid-feedback d-block">
-                                    {% for error in form.estado_civil.errors %}
-                                        <small>{{ error }}</small>
-                                    {% endfor %}
-                                </div>
+                            {{ form.estado_civil(class="form-control is-invalid") }}
+                            <div class="invalid-feedback d-block">
+                                {% for error in form.estado_civil.errors %}
+                                <small>{{ error }}</small>
+                                {% endfor %}
+                            </div>
                             {% else %}
-                                {{ form.estado_civil(class="form-control") }}
+                            {{ form.estado_civil(class="form-control") }}
                             {% endif %}
                         </div>
 
@@ -76,14 +77,14 @@
                         <div class="mb-3">
                             {{ form.email_personal.label(class="form-label") }}
                             {% if form.email_personal.errors %}
-                                {{ form.email_personal(class="form-control is-invalid") }}
-                                <div class="invalid-feedback d-block">
-                                    {% for error in form.email_personal.errors %}
-                                        <small>{{ error }}</small>
-                                    {% endfor %}
-                                </div>
+                            {{ form.email_personal(class="form-control is-invalid") }}
+                            <div class="invalid-feedback d-block">
+                                {% for error in form.email_personal.errors %}
+                                <small>{{ error }}</small>
+                                {% endfor %}
+                            </div>
                             {% else %}
-                                {{ form.email_personal(class="form-control", placeholder="tumail@ejemplo.com") }}
+                            {{ form.email_personal(class="form-control", placeholder="tumail@ejemplo.com") }}
                             {% endif %}
                             <small class="text-muted d-block mt-1">
                                 <i class="bi bi-info-circle"></i> Usa solo para comunicaciones personales
@@ -94,14 +95,14 @@
                         <div class="mb-3">
                             {{ form.direccion.label(class="form-label") }}
                             {% if form.direccion.errors %}
-                                {{ form.direccion(class="form-control is-invalid", rows="3") }}
-                                <div class="invalid-feedback d-block">
-                                    {% for error in form.direccion.errors %}
-                                        <small>{{ error }}</small>
-                                    {% endfor %}
-                                </div>
+                            {{ form.direccion(class="form-control is-invalid", rows="3") }}
+                            <div class="invalid-feedback d-block">
+                                {% for error in form.direccion.errors %}
+                                <small>{{ error }}</small>
+                                {% endfor %}
+                            </div>
                             {% else %}
-                                {{ form.direccion(class="form-control", rows="3", placeholder="Dirección domiciliaria") }}
+                            {{ form.direccion(class="form-control", rows="3", placeholder="Dirección domiciliaria") }}
                             {% endif %}
                         </div>
 
@@ -164,7 +165,7 @@
             <div class="alert alert-info mt-3 small">
                 <strong>Art. 9 Ley 29733:</strong>
                 <p class="mb-0">
-                    Tienes derecho a solicitar la rectificación de tus datos cuando sean inexactos, 
+                    Tienes derecho a solicitar la rectificación de tus datos cuando sean inexactos,
                     incompletos u obsoletos.
                 </p>
             </div>
@@ -172,20 +173,5 @@
     </div>
 </div>
 
-<script nonce="{{ csp_nonce() }}">
-    // Validación del formulario
-    (function () {
-        'use strict';
-        const form = document.querySelector('.needs-validation');
-        if (form) {
-            form.addEventListener('submit', function (event) {
-                if (!form.checkValidity()) {
-                    event.preventDefault();
-                    event.stopPropagation();
-                }
-                form.classList.add('was-validated');
-            }, false);
-        }
-    })();
-</script>
+<script src="{{ url_for('static', filename='js/form-confirmations.js') }}" nonce="{{ csp_nonce() }}"></script>
 {% endblock %}

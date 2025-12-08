@@ -44,8 +44,8 @@
                                             class="btn btn-sm btn-warning" title="Editar y Gestionar Secciones">
                                             <i class="bi bi-pencil"></i>
                                         </a>
-                                        <button type="button" class="btn btn-sm btn-danger"
-                                            onclick="confirmarEliminacion({{ tipo.id_tipo }}, '{{ tipo.nombre_tipo }}')"
+                                        <button type="button" class="btn btn-sm btn-danger btn-eliminar-tipo"
+                                            data-id="{{ tipo.id_tipo }}" data-nombre="{{ tipo.nombre_tipo }}"
                                             title="Eliminar">
                                             <i class="bi bi-trash"></i>
                                         </button>
@@ -78,25 +78,5 @@
 {% block scripts %}
 {{ super() }}
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-<script nonce="{{ csp_nonce() }}">
-    function confirmarEliminacion(id, nombre) {
-        Swal.fire({
-            title: '¿Eliminar tipo de documento?',
-            html: `¿Está seguro de eliminar el tipo <strong>"${nombre}"</strong>?<br><br>` +
-                `<span class="text-danger">⚠️ Si hay documentos de este tipo, la eliminación fallará.</span>`,
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonColor: '#d33',
-            cancelButtonColor: '#3085d6',
-            confirmButtonText: 'Sí, eliminar',
-            cancelButtonText: 'Cancelar'
-        }).then((result) => {
-            if (result.isConfirmed) {
-                const form = document.getElementById('deleteForm');
-                form.action = `{{ url_for('admin_catalogo.eliminar_tipo_documento', id_tipo=0) }}`.replace('/0', `/${id}`);
-                form.submit();
-            }
-        });
-    }
-</script>
+<script src="{{ url_for('static', filename='js/catalogos-handlers.js') }}" nonce="{{ csp_nonce() }}"></script>
 {% endblock %}

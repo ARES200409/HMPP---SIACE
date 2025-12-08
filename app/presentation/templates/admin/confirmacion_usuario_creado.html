@@ -28,15 +28,18 @@
                     <h6 class="alert-heading">
                         <i class="bi bi-key-fill me-2"></i>Credenciales de Acceso
                     </h6>
-                    <p class="small text-muted">Estos datos se generaron automáticamente. Entrega esta información al empleado de forma segura.</p>
+                    <p class="small text-muted">Estos datos se generaron automáticamente. Entrega esta información al
+                        empleado de forma segura.</p>
                     <hr>
-                    
+
                     <div class="row mt-3">
                         <div class="col-md-6">
                             <label class="form-label"><strong>Nombre de Usuario:</strong></label>
                             <div class="input-group">
-                                <input type="text" class="form-control" id="username" value="{{ usuario_info.username }}" readonly>
-                                <button class="btn btn-outline-secondary" type="button" data-copy-to-clipboard="username">
+                                <input type="text" class="form-control" id="username"
+                                    value="{{ usuario_info.username }}" readonly>
+                                <button class="btn btn-outline-secondary" type="button"
+                                    data-copy-to-clipboard="username">
                                     <i class="bi bi-files me-1"></i>Copiar
                                 </button>
                             </div>
@@ -44,11 +47,13 @@
                         <div class="col-md-6">
                             <label class="form-label"><strong>Contraseña Temporal:</strong></label>
                             <div class="input-group">
-                                <input type="password" class="form-control" id="password" value="{{ usuario_info.password }}" readonly>
+                                <input type="password" class="form-control" id="password"
+                                    value="{{ usuario_info.password }}" readonly>
                                 <button class="btn btn-outline-secondary" type="button" data-toggle-password="password">
                                     <i class="bi bi-eye" id="icon-ojo"></i>
                                 </button>
-                                <button class="btn btn-outline-secondary" type="button" data-copy-to-clipboard="password">
+                                <button class="btn btn-outline-secondary" type="button"
+                                    data-copy-to-clipboard="password">
                                     <i class="bi bi-files me-1"></i>Copiar
                                 </button>
                             </div>
@@ -65,7 +70,8 @@
                         </h6>
                         <ul class="small mb-0">
                             <li>Entregar esta información de forma segura (persona a persona o correo cifrado)</li>
-                            <li>El usuario debe cambiar su contraseña inmediatamente después del primer inicio de sesión</li>
+                            <li>El usuario debe cambiar su contraseña inmediatamente después del primer inicio de sesión
+                            </li>
                             <li>No compartir estas credenciales por canales inseguros</li>
                             <li>La contraseña debe tener al menos 8 caracteres</li>
                         </ul>
@@ -85,7 +91,8 @@
                 <!-- Nota importante -->
                 <div class="alert alert-danger mt-4" role="alert">
                     <small>
-                        <strong>⚠️ Importante:</strong> Asegúrate de entregar estas credenciales al personal de forma segura. 
+                        <strong>⚠️ Importante:</strong> Asegúrate de entregar estas credenciales al personal de forma
+                        segura.
                         No guardes esta información en tu navegador una vez que abandones esta página.
                     </small>
                 </div>
@@ -96,56 +103,18 @@
 
 <style>
     @media print {
-        .btn, .alert-danger, .d-flex {
+
+        .btn,
+        .alert-danger,
+        .d-flex {
             display: none !important;
         }
+
         .card {
             border: 1px solid #000 !important;
         }
     }
 </style>
 
-<script nonce="{{ csp_nonce() }}">
-function copiarAlPortapapeles(elementId) {
-    const elemento = document.getElementById(elementId);
-    elemento.select();
-    documento.execCommand("copy");
-    
-    // Mostrar feedback
-    const btn = event.target.closest('button');
-    const textOriginal = btn.innerHTML;
-    btn.innerHTML = '<i class="bi bi-check me-1"></i>¡Copiado!';
-    setTimeout(() => {
-        btn.innerHTML = textOriginal;
-    }, 2000);
-}
-
-function mostrarOcultarPassword() {
-    const passwordInput = document.getElementById('password');
-    const iconOjo = document.getElementById('icon-ojo');
-    
-    if (passwordInput.type === 'password') {
-        passwordInput.type = 'text';
-        iconOjo.classList.remove('bi-eye');
-        iconOjo.classList.add('bi-eye-slash');
-    } else {
-        passwordInput.type = 'password';
-        iconOjo.classList.remove('bi-eye-slash');
-        iconOjo.classList.add('bi-eye');
-    }
-}
-
-function imprimirDatos() {
-    window.print();
-}
-
-// Nota de seguridad
-window.addEventListener('beforeunload', function(e) {
-    // Solo mostrar si el usuario intenta navegar
-    if (document.referrer.includes('confirmacion_usuario_creado')) {
-        e.preventDefault();
-        e.returnValue = 'Has generado credenciales. Asegúrate de haberlas guardado de forma segura.';
-    }
-});
-</script>
+<script src="{{ url_for('static', filename='js/confirmacion-usuario.js') }}" nonce="{{ csp_nonce() }}"></script>
 {% endblock %}

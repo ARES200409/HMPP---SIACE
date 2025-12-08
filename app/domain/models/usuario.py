@@ -13,7 +13,7 @@ class Usuario(UserMixin):
     """
     def __init__(self, id_usuario, username, id_rol, password_hash=None, activo=True, 
                  email=None, nombre_rol=None, two_factor_code=None, two_factor_expiry=None,
-                 nombre_completo=None, ultimo_login=None, id_personal=None,
+                 nombre_completo=None, ultimo_login=None, id_personal=None, foto_perfil=None,
                  **kwargs):
         
         self.id = id_usuario
@@ -26,6 +26,7 @@ class Usuario(UserMixin):
         self.nombre_rol = nombre_rol
         self.rol = nombre_rol
         self.id_personal = id_personal  # Asociación con personal
+        self.foto_perfil = foto_perfil  # Ruta de la foto de perfil
         
         self.two_factor_code = two_factor_code
         self.two_factor_expiry = two_factor_expiry

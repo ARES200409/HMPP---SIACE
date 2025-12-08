@@ -2,6 +2,31 @@
 
 {% block title %}Mi Perfil{% endblock %}
 
+<style>
+    .badge-estado {
+        display: inline-block;
+        padding: 0.5rem 1rem;
+        border-radius: 6px;
+        font-weight: 600;
+        font-size: 0.9rem;
+    }
+
+    .badge-activo {
+        background: #dcfce7;
+        color: #166534;
+    }
+
+    .badge-inactivo {
+        background: #fef3c7;
+        color: #92400e;
+    }
+
+    .badge-bloqueado {
+        background: #fee2e2;
+        color: #991b1b;
+    }
+</style>
+
 {% block dashboard_content %}
 <div class="container-fluid px-4 py-3">
     <!-- Header Premium -->
@@ -67,7 +92,7 @@
                     <div style="margin-bottom: 1rem;">
                         <p style="color: #6b7280; font-weight: 500; margin-bottom: 0.5rem;">Estado de Cuenta</p>
                         <span
-                            style="display: inline-block; padding: 0.5rem 1rem; border-radius: 6px; font-weight: 600; font-size: 0.9rem; {% if user_data.estado == 'activo' %}background: #dcfce7; color: #166534;{% elif user_data.estado == 'inactivo' %}background: #fef3c7; color: #92400e;{% else %}background: #fee2e2; color: #991b1b;{% endif %}">
+                            class="badge-estado {% if user_data.estado == 'activo' %}badge-activo{% elif user_data.estado == 'inactivo' %}badge-inactivo{% else %}badge-bloqueado{% endif %}">
                             {% if user_data.estado == 'activo' %}<i class="bi bi-check-circle me-1"></i>{% elif
                             user_data.estado == 'inactivo' %}<i class="bi bi-clock me-1"></i>{% else %}<i
                                 class="bi bi-x-circle me-1"></i>{% endif %}

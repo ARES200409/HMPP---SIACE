@@ -1,6 +1,6 @@
 # RUTA: app/presentation/routes/auth_routes.py
 
-from flask import Blueprint, render_template, redirect, url_for, flash, request, session, current_app
+from flask import Blueprint, render_template, redirect, url_for, flash, request, session, current_app, send_from_directory
 from flask_login import login_user, logout_user, current_user, login_required
 from app.application.forms import LoginForm, TwoFactorForm
 from app import limiter
@@ -10,6 +10,27 @@ from app.application.services.file_validation_service import FileValidationServi
 import os
 
 auth_bp = Blueprint('auth', __name__)
+
+@auth_bp.route('/fotos/<filename>')
+def serve_foto_perfil(filename):
+    """Sirve las fotos de perfil de los usuarios de forma segura."""
+    try:
+        fotos_dir = current_app.config.get('FOTOS_PERFIL_DIR')
+        if not fotos_dir:
+            # Fallback si no está configurado
+            fotos_dir = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                'presentation',
+                'static',
+                'uploads',
+                'fotos'
+            )
+        return send_from_directory(fotos_dir, filename)
+    except Exception as e:
+        current_app.logger.error(f"Error al servir foto de perfil: {e}")
+        # Retornar imagen por defecto o error 404
+        return '', 404
+
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
 # Seguridad: Aplicar un límite de intentos para prevenir ataques de fuerza bruta.
@@ -258,9 +279,21 @@ def perfil():
                     offset = ((800 - imagen.width) // 2, (800 - imagen.height) // 2)
                     new_img.paste(imagen, offset)
                     
-                    # Guardar como JPG con nombre único
-                    filename = f"foto_{current_user.id}_{int(time.time())}.jpg"
+                    # ✅ CORRECCIÓN: Usar nombre fijo para sobrescribir foto anterior
+                    filename = f"foto_{current_user.id}.jpg"
                     filepath = os.path.join(fotos_dir, filename)
+                    
+                    # ✅ ELIMINAR foto anterior si existe (fotos con timestamp antiguo)
+                    try:
+                        for old_file in os.listdir(fotos_dir):
+                            # Eliminar cualquier foto anterior de este usuario
+                            if old_file.startswith(f"foto_{current_user.id}_") or old_file == filename:
+                                old_filepath = os.path.join(fotos_dir, old_file)
+                                if os.path.exists(old_filepath):
+                                    os.remove(old_filepath)
+                                    current_app.logger.info(f"Foto anterior eliminada: {old_file}")
+                    except Exception as e:
+                        current_app.logger.warning(f"No se pudo eliminar foto anterior: {e}")
                     
                     # Guardar con calidad optimizada
                     new_img.save(filepath, 'JPEG', quality=85, optimize=True)

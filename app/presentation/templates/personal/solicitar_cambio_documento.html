@@ -23,23 +23,25 @@
                     <h6 class="m-0 font-weight-bold text-primary">Detalles de la Solicitud</h6>
                 </div>
                 <div class="card-body">
-                    
+
                     <div class="alert alert-warning border-left-warning" role="alert">
                         <h5 class="alert-heading"><i class="fas fa-file-alt"></i> Documento a Reemplazar</h5>
                         <hr>
                         {# Se usa getattr o acceso seguro por si el objeto viene como tupla o diccionario #}
                         <p class="mb-1"><strong>Nombre:</strong> {{ documento.nombre_archivo }}</p>
-                        <p class="mb-0"><strong>Nota:</strong> El documento actual seguirá visible hasta que RRHH apruebe este cambio.</p>
+                        <p class="mb-0"><strong>Nota:</strong> El documento actual seguirá visible hasta que RRHH
+                            apruebe este cambio.</p>
                     </div>
 
                     <form method="POST" enctype="multipart/form-data" class="needs-validation" novalidate>
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        
+
                         {# --- CORRECCIÓN: Campo oculto para mantener el ID del documento en el POST --- #}
                         <input type="hidden" name="documento_id" value="{{ documento.id_documento }}">
 
                         <div class="mb-4">
-                            <label for="archivo_nuevo" class="form-label font-weight-bold">1. Seleccionar Nuevo Archivo</label>
+                            <label for="archivo_nuevo" class="form-label font-weight-bold">1. Seleccionar Nuevo
+                                Archivo</label>
                             <input type="file" class="form-control" id="archivo_nuevo" name="archivo_nuevo" required>
                             <div class="invalid-feedback">Por favor selecciona un archivo.</div>
                             <small class="text-muted">Formatos aceptados: PDF, imágenes. Máximo 10MB.</small>
@@ -47,13 +49,13 @@
 
                         <div class="mb-4">
                             <label for="razon" class="form-label font-weight-bold">2. Motivo del Cambio</label>
-                            <textarea class="form-control" id="motivo" name="razon" rows="3" required 
+                            <textarea class="form-control" id="motivo" name="razon" rows="3" required
                                 placeholder="Ej: El documento anterior estaba borroso / Esta es la versión actualizada del certificado..."></textarea>
                             <div class="invalid-feedback">Por favor explica la razón del cambio.</div>
                         </div>
 
                         <hr>
-                        
+
                         <div class="d-flex justify-content-end">
                             <button type="submit" class="btn btn-primary btn-lg">
                                 <i class="fas fa-paper-plane"></i> Enviar Solicitud
@@ -67,20 +69,5 @@
     </div>
 </div>
 
-<script nonce="{{ csp_nonce() }}">
-    // Validación de Bootstrap
-    (function () {
-        'use strict'
-        var forms = document.querySelectorAll('.needs-validation')
-        Array.prototype.slice.call(forms).forEach(function (form) {
-            form.addEventListener('submit', function (event) {
-                if (!form.checkValidity()) {
-                    event.preventDefault()
-                    event.stopPropagation()
-                }
-                form.classList.add('was-validated')
-            }, false)
-        })
-    })()
-</script>
+<script src="{{ url_for('static', filename='js/form-confirmations.js') }}" nonce="{{ csp_nonce() }}"></script>
 {% endblock %}

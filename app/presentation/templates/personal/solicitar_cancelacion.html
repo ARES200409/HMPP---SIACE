@@ -20,14 +20,15 @@
     </div>
 
     {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-            {% for category, message in messages %}
-                <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
-                    {{ message }}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                </div>
-            {% endfor %}
-        {% endif %}
+    {% if messages %}
+    {% for category, message in messages %}
+    <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show"
+        role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}
+    {% endif %}
     {% endwith %}
 
     <div class="row">
@@ -39,33 +40,33 @@
                 <div class="card-body">
                     <form method="POST" class="needs-validation" novalidate>
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
-                        
+
                         <div class="mb-4">
                             <label class="form-label"><strong>¿Qué datos deseas cancelar?</strong></label>
                             <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="datos_cancelar" 
-                                        value="email_personal" id="email_personal">
+                                <input class="form-check-input" type="checkbox" name="datos_cancelar"
+                                    value="email_personal" id="email_personal">
                                 <label class="form-check-label" for="email_personal">
                                     Email personal
                                 </label>
                             </div>
                             <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="datos_cancelar" 
-                                        value="telefono" id="telefono">
+                                <input class="form-check-input" type="checkbox" name="datos_cancelar" value="telefono"
+                                    id="telefono">
                                 <label class="form-check-label" for="telefono">
                                     Teléfono de contacto
                                 </label>
                             </div>
                             <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="datos_cancelar" 
-                                        value="direccion" id="direccion">
+                                <input class="form-check-input" type="checkbox" name="datos_cancelar" value="direccion"
+                                    id="direccion">
                                 <label class="form-check-label" for="direccion">
                                     Dirección domiciliaria
                                 </label>
                             </div>
                             <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="datos_cancelar" 
-                                        value="datos_sensibles" id="datos_sensibles">
+                                <input class="form-check-input" type="checkbox" name="datos_cancelar"
+                                    value="datos_sensibles" id="datos_sensibles">
                                 <label class="form-check-label" for="datos_sensibles">
                                     Datos de salud u otros datos sensibles
                                 </label>
@@ -74,8 +75,8 @@
 
                         <div class="mb-3">
                             <label for="razon" class="form-label"><strong>Razón de la Cancelación</strong></label>
-                            <textarea class="form-control" id="razon" name="razon" rows="4" 
-                                        placeholder="Explica por qué deseas cancelar estos datos..."></textarea>
+                            <textarea class="form-control" id="razon" name="razon" rows="4"
+                                placeholder="Explica por qué deseas cancelar estos datos..."></textarea>
                             <small class="text-muted d-block mt-1">
                                 <i class="bi bi-info-circle"></i> Tu respuesta ayudará a procesar mejor tu solicitud
                             </small>
@@ -86,8 +87,8 @@
                                 <i class="bi bi-exclamation-circle"></i> Importante
                             </strong>
                             <p class="mb-0">
-                                Tu solicitud será procesada en un plazo máximo de 5 días hábiles. 
-                                Ten en cuenta que algunos datos no pueden ser cancelados si son necesarios 
+                                Tu solicitud será procesada en un plazo máximo de 5 días hábiles.
+                                Ten en cuenta que algunos datos no pueden ser cancelados si son necesarios
                                 para cumplir obligaciones legales o fiscales.
                             </p>
                         </div>
@@ -114,8 +115,8 @@
                 </div>
                 <div class="card-body small">
                     <p>
-                        La cancelación implica la eliminación o anonimización de tus datos personales 
-                        en el registro de DIRESA, cuando ya no sean necesarios para los fines para los 
+                        La cancelación implica la eliminación o anonimización de tus datos personales
+                        en el registro de DIRESA, cuando ya no sean necesarios para los fines para los
                         cuales fueron recabados.
                     </p>
                 </div>
@@ -142,7 +143,7 @@
             <div class="alert alert-info mt-3 small">
                 <strong>Art. 10 Ley 29733:</strong>
                 <p class="mb-0">
-                    Tienes derecho a solicitar la cancelación de tus datos cuando hayan dejado de ser 
+                    Tienes derecho a solicitar la cancelación de tus datos cuando hayan dejado de ser
                     necesarios para los fines para los cuales fueron recabados.
                 </p>
             </div>
@@ -150,16 +151,5 @@
     </div>
 </div>
 
-<script nonce="{{ csp_nonce() }}">
-    document.addEventListener('DOMContentLoaded', function() {
-        const form = document.querySelector('form');
-        form.addEventListener('submit', function(e) {
-            const checkboxes = document.querySelectorAll('input[name="datos_cancelar"]:checked');
-            if (checkboxes.length === 0) {
-                e.preventDefault();
-                alert('Por favor, selecciona al menos un tipo de dato para cancelar.');
-            }
-        });
-    });
-</script>
+<script src="{{ url_for('static', filename='js/form-confirmations.js') }}" nonce="{{ csp_nonce() }}"></script>
 {% endblock %}

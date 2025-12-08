@@ -20,14 +20,15 @@
     </div>
 
     {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-            {% for category, message in messages %}
-                <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
-                    {{ message }}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                </div>
-            {% endfor %}
-        {% endif %}
+    {% if messages %}
+    {% for category, message in messages %}
+    <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show"
+        role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}
+    {% endif %}
     {% endwith %}
 
     <div class="row">
@@ -39,9 +40,10 @@
                 <div class="card-body">
                     <form method="POST" class="needs-validation" novalidate>
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
-                        
+
                         <div class="mb-4">
-                            <label for="tipo_procesamiento" class="form-label"><strong>¿A qué procesamiento te opones?</strong></label>
+                            <label for="tipo_procesamiento" class="form-label"><strong>¿A qué procesamiento te
+                                    opones?</strong></label>
                             <select class="form-select" id="tipo_procesamiento" name="tipo_procesamiento" required>
                                 <option value="">-- Selecciona una opción --</option>
                                 <option value="marketing">Comunicaciones de marketing y promociones</option>
@@ -55,8 +57,8 @@
 
                         <div class="mb-3">
                             <label for="motivo" class="form-label"><strong>Motivo de la Oposición</strong></label>
-                            <textarea class="form-control" id="motivo" name="motivo" rows="4" 
-                                    placeholder="Explica los motivos de tu oposición..." required></textarea>
+                            <textarea class="form-control" id="motivo" name="motivo" rows="4"
+                                placeholder="Explica los motivos de tu oposición..." required></textarea>
                             <small class="text-muted d-block mt-1">
                                 <i class="bi bi-info-circle"></i> Sé específico sobre por qué te opones
                             </small>
@@ -67,17 +69,17 @@
                                 <i class="bi bi-exclamation-circle"></i> Importante
                             </strong>
                             <p class="mb-0">
-                                Tu solicitud será evaluada y procesada en un plazo máximo de 5 días hábiles. 
-                                Ten en cuenta que existen ciertos procesamiento que son obligatorios por ley 
+                                Tu solicitud será evaluada y procesada en un plazo máximo de 5 días hábiles.
+                                Ten en cuenta que existen ciertos procesamiento que son obligatorios por ley
                                 y no pueden ser objeto de oposición.
                             </p>
                         </div>
 
                         <div class="form-check mb-3">
-                            <input class="form-check-input" type="checkbox" id="confirmacion" 
-                                   name="confirmacion" required>
+                            <input class="form-check-input" type="checkbox" id="confirmacion" name="confirmacion"
+                                required>
                             <label class="form-check-label" for="confirmacion">
-                                Confirmo que la información proporcionada es correcta y comprendo 
+                                Confirmo que la información proporcionada es correcta y comprendo
                                 las implicaciones de esta oposición.
                             </label>
                         </div>
@@ -104,8 +106,8 @@
                 </div>
                 <div class="card-body small">
                     <p>
-                        El derecho de oposición te permite oponerte al procesamiento de tus datos 
-                        personales para fines específicos, salvo en aquellos casos donde exista 
+                        El derecho de oposición te permite oponerte al procesamiento de tus datos
+                        personales para fines específicos, salvo en aquellos casos donde exista
                         obligación legal.
                     </p>
                 </div>
@@ -132,7 +134,7 @@
             <div class="alert alert-info mt-3 small">
                 <strong>Art. 11 Ley 29733:</strong>
                 <p class="mb-0">
-                    Tienes derecho a oponerte al procesamiento de tus datos cuando exista un interés 
+                    Tienes derecho a oponerte al procesamiento de tus datos cuando exista un interés
                     personal legítimo, salvo cuando la ley lo autoriza o lo exige.
                 </p>
             </div>
@@ -140,16 +142,5 @@
     </div>
 </div>
 
-<script nonce="{{ csp_nonce() }}">
-    document.addEventListener('DOMContentLoaded', function() {
-        const form = document.querySelector('form');
-        form.addEventListener('submit', function(e) {
-            if (!form.checkValidity()) {
-                e.preventDefault();
-                e.stopPropagation();
-            }
-            form.classList.add('was-validated');
-        });
-    });
-</script>
+<script src="{{ url_for('static', filename='js/form-confirmations.js') }}" nonce="{{ csp_nonce() }}"></script>
 {% endblock %}

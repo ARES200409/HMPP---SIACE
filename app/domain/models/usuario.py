@@ -3,13 +3,17 @@
 from flask_login import UserMixin
 from app.core.security import check_password_hash, generate_password_hash
 
-# 🚨 IMPORTANTE: Define aquí los IDs de rol de tu BD para claridad
-ROL_ID_SISTEMAS = 3 # ID para el Encargado de Sistemas/Admin Técnico
-ROL_ID_LEGAJO = 2   # ID para el Encargado de Legajos/Usuario Clave
+# 🚨 IDs de rol sincronizados con la Base de Datos (image_72d2c8.png)
+ROL_ID_SISTEMAS = 1  # Sistemas
+ROL_ID_RRHH = 2      # RRHH Consulta
+ROL_ID_LEGAJO = 3    # Administrador de Legajos
+ROL_ID_AUDITOR = 4   # Auditor
+ROL_ID_PERSONAL = 5  # Rol para acceso de empleados
 
 class Usuario(UserMixin):
     """
     Representa la entidad de un usuario, incluyendo datos de sesión y perfil.
+    Cumple con la Ley 29733 de Protección de Datos Personales.
     """
     def __init__(self, id_usuario, username, id_rol, password_hash=None, activo=True, 
                  email=None, nombre_rol=None, two_factor_code=None, two_factor_expiry=None,
@@ -17,23 +21,23 @@ class Usuario(UserMixin):
                  **kwargs):
         
         self.id = id_usuario
-        self.id_usuario = id_usuario  # También guardar como id_usuario para compatibilidad
+        self.id_usuario = id_usuario  # Compatibilidad con consultas de infraestructura
         self.username = username
-        self.id_rol = id_rol           # Campo crucial para el control de acceso
+        self.id_rol = id_rol           # Control de acceso por ID
         self.password_hash = password_hash
         self.activo = activo
         self.email = email
         self.nombre_rol = nombre_rol
-        self.rol = nombre_rol
-        self.id_personal = id_personal  # Asociación con personal
-        self.foto_perfil = foto_perfil  # Ruta de la foto de perfil
+        self.rol = nombre_rol          # Alias para decoradores @role_required
+        self.id_personal = id_personal  # Vínculo con tabla personal
+        self.foto_perfil = foto_perfil
         
+        # Atributos de seguridad y sesión
         self.two_factor_code = two_factor_code
         self.two_factor_expiry = two_factor_expiry
-
         self.nombre_completo = nombre_completo
         self.fecha_ultimo_login = ultimo_login
-        
+
     def set_password(self, password):
         """Genera y asigna el hash de una nueva contraseña."""
         self.password_hash = generate_password_hash(password)
@@ -44,31 +48,31 @@ class Usuario(UserMixin):
             return check_password_hash(self.password_hash, password)
         return False
     
-    # --- MÉTODOS DE CONTROL DE ACCESO POR ROL (RBAC) ---
+    # --- MÉTODOS DE CONTROL DE ACCESO (RBAC) ---
 
     def is_system_admin(self):
-        """Retorna True si el usuario tiene el rol de Administrador de Sistemas."""
-        # Compara el ID de rol con el ID definido para Sistemas
+        """Retorna True si es Administrador de Sistemas (ID 1)."""
         return self.id_rol == ROL_ID_SISTEMAS
         
     def is_legajo_manager(self):
-        """Retorna True si el usuario es el Encargado de Legajos (usuario clave)."""
-        # Compara el ID de rol con el ID definido para Legajos
+        """Retorna True si es Administrador de Legajos (ID 3)."""
         return self.id_rol == ROL_ID_LEGAJO
+
+    def is_personal(self):
+        """Retorna True si es un usuario con rol Personal (ID 5)."""
+        return self.id_rol == ROL_ID_PERSONAL
         
-    # --- FIN DE MÉTODOS DE CONTROL DE ACCESO ---
+    # --- SEGURIDAD ---
 
     def check_2fa_code(self, code):
-        """Verifica el código de doble factor de autenticación."""
+        """Verifica el código 2FA generado en terminal."""
         if self.two_factor_code:
             return check_password_hash(self.two_factor_code, code)
         return False
 
     @staticmethod
     def from_dict(data):
-        """Crea una instancia de Usuario a partir de un diccionario de datos (ej. desde la BD)."""
+        """Crea una instancia de Usuario a partir de un diccionario de la BD."""
         if data:
             return Usuario(**data)
         return None
-
-# Fin de app/domain/models/usuario.py

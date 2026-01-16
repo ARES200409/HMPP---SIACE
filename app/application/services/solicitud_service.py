@@ -91,3 +91,31 @@ class SolicitudService:
         }
         
         return self.solicitud_repo.crear_solicitud_modificacion(data)
+    
+
+
+
+    def registrar_solicitud_cancelacion(self, id_usuario, datos_cancelar, motivo):
+        """
+        Registra una solicitud de cancelación de datos personales.
+        """
+        try:
+            # 1. Obtener id_personal (asumiendo que el usuario tiene un personal_id)
+            id_personal = self.solicitud_repo.obtener_id_personal_por_usuario(id_usuario)
+            
+            # 2. Mapeo para la tabla de solicitudes
+            # Usamos 'campo_modificado' para indicar qué datos se quieren borrar
+            data = {
+                'id_personal': id_personal,
+                'id_usuario_solicitante': id_usuario,
+                'campo_modificado': f"CANCELACIÓN: {', '.join(datos_cancelar)}",
+                'valor_anterior': 'Dato actual en sistema',
+                'valor_nuevo': f"MOTIVO: {motivo}" 
+            }
+            
+            # 3. Guardar en la tabla general de solicitudes
+            return self.solicitud_repo.crear_solicitud_modificacion(data)
+
+        except Exception as e:
+            logger.error(f"Error en registrar_solicitud_cancelacion: {e}")
+            raise

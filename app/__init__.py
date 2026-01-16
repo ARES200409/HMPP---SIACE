@@ -213,6 +213,7 @@ def create_app():
         app.config['AUDIT_REPOSITORY'] = audit_repo
         
         email_service = EmailService(mail)
+        app.config['EMAIL_SERVICE'] = email_service
         audit_service = AuditService(audit_repo)
         
         app.config['BACKUP_SERVICE'] = BackupService(backup_repo, app.config, audit_service)

@@ -7,6 +7,7 @@ from app import limiter
 from app.application.services.usuario_service import UsuarioService
 from app.core.security import AccountLockoutManager
 from app.application.services.file_validation_service import FileValidationService
+from PIL import Image, ImageOps
 import os
 
 auth_bp = Blueprint('auth', __name__)
@@ -33,9 +34,9 @@ def serve_foto_perfil(filename):
 
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
-# Seguridad: Aplicar un límite de intentos para prevenir ataques de fuerza bruta.
 @limiter.limit("20 per minute")
 def login():
+    """Ruta de inicio de sesión optimizada para enviar el código real."""
     if current_user.is_authenticated:
         return redirect(url_for('index'))
     
@@ -43,58 +44,61 @@ def login():
     if form.validate_on_submit():
         try:
             username = form.username.data
-            selected_role = form.role.data  # <--- 1. Capturamos el rol seleccionado del formulario
+            selected_role = form.role.data 
             
-            # ✅ SEGURIDAD: Verificar si cuenta está bloqueada
+            # 1. SEGURIDAD: Verificar bloqueo de cuenta
             is_locked, minutos_restantes = AccountLockoutManager.is_account_locked(username)
             if is_locked:
-                mensaje = f"Cuenta bloqueada temporalmente por múltiples intentos fallidos. Intenta en {minutos_restantes} minutos."
-                flash(mensaje, 'warning')
-                current_app.logger.warning(f"SEGURIDAD: Intento de login en cuenta bloqueada: {username}")
+                flash(f"Cuenta bloqueada temporalmente. Intenta en {minutos_restantes} minutos.", 'warning')
                 return redirect(url_for('auth.login'))
             
             usuario_service = current_app.config['USUARIO_SERVICE']
             result = usuario_service.attempt_login(username, form.password.data)
 
-            # Verificar si result es una tupla (error de email)
+            # Manejo de errores de email
             if isinstance(result, tuple) and result[0] == 'email_error':
                 flash(f'⚠️ {result[1]}', 'warning')
                 return redirect(url_for('auth.login'))
             
-            # Si result es un ID de usuario (login exitoso de credenciales)
-            if result:
-                # <--- 2. VALIDACIÓN DE ROL (NUEVO) --->
-                # Obtenemos el usuario temporalmente para verificar que coincida con el rol seleccionado
-                user_temp = usuario_service.get_user_by_id(result)
+            # 2. PROCESAR ÉXITO (ID y Código Real)
+            if result and isinstance(result, tuple):
+                user_id, code_real = result  # <--- AQUÍ ESTÁ TU CÓDIGO DE 6 DÍGITOS
+                user_temp = usuario_service.get_user_by_id(user_id)
                 
+                # VALIDACIÓN DE ROL
                 if user_temp and user_temp.rol != selected_role:
-                    # Si el rol en base de datos no coincide con el seleccionado
-                    current_app.logger.warning(f"SEGURIDAD: Intento de login con rol incorrecto. Usuario: {username}, Rol Real: {user_temp.rol}, Rol Seleccionado: {selected_role}")
-                    flash(f'El usuario ingresado no pertenece al rol "{selected_role}".', 'warning')
+                    flash(f'El usuario no pertenece al rol "{selected_role}".', 'warning')
                     return redirect(url_for('auth.login'))
-                
-                # <--- FIN VALIDACIÓN DE ROL --->
 
-                # ✅ SEGURIDAD: Reiniciar contador en login exitoso
-                AccountLockoutManager.reset_failed_attempts(username)
+                # 📧 3. ENVÍO DE CORREO (USANDO EL CÓDIGO REAL)
+                email_service = current_app.config.get('EMAIL_SERVICE')
                 
-                session['2fa_user_id'] = result
-                session['2fa_username'] = form.username.data
-                # Guardar el estado de "Recordarme" en la sesión
+                if email_service and user_temp.email:
+                    # 💡 CAMBIO CRÍTICO: Usamos 'code_real' directamente. 
+                    # NO llames a get_current_2fa aquí porque eso te daría el hash.
+                    email_service.send_2fa_code(
+                        recipient_email=user_temp.email,
+                        user_name=user_temp.username,
+                        code=code_real # <--- LOS 6 DÍGITOS LIMPIOS
+                    )
+                    flash(f'Se ha enviado un código de seguridad a: {user_temp.email}', 'info')
+
+                # 4. PREPARAR SESIÓN
+                AccountLockoutManager.reset_failed_attempts(username)
+                session['2fa_user_id'] = user_id # 💡 IMPORTANTE: Solo el ID, no la tupla
+                session['2fa_username'] = username
                 session['2fa_remember_me'] = form.remember_me.data
+                
                 return redirect(url_for('auth.verify_2fa'))
+            
             else:
-                # ✅ SEGURIDAD: Incrementar intentos fallidos e informar bloqueo
-                fue_bloqueado = AccountLockoutManager.increment_failed_attempts(username)
-                if fue_bloqueado:
-                    flash('Cuenta bloqueada tras múltiples intentos fallidos.', 'danger')
-                else:
-                    flash('Usuario o contraseña incorrectos.', 'danger')
-                current_app.logger.warning(f"SEGURIDAD: Intento fallido de login: {username}")
+                AccountLockoutManager.increment_failed_attempts(username)
+                flash('Usuario o contraseña incorrectos.', 'danger')
                 return redirect(url_for('auth.login'))
+                
         except Exception as e:
             current_app.logger.error(f"Error inesperado en login: {e}")
-            flash("Ocurrió un error inesperado. Por favor, intente de nuevo.", 'danger')
+            flash("Ocurrió un error inesperado.", 'danger')
             return redirect(url_for('auth.login'))
             
     return render_template('auth/login.html', form=form)
@@ -188,12 +192,12 @@ from werkzeug.security import generate_password_hash
 @login_required
 def perfil():
     """
-    Muestra el perfil del usuario con información detallada y permite cambiar la contraseña.
+    Muestra el perfil del usuario y permite actualizar la foto (ahora con llenado total).
     """
     usuario_service = current_app.config.get('USUARIO_SERVICE')
     legajo_service = current_app.config.get('LEGAJO_SERVICE')
     
-    # Obtener datos adicionales del usuario
+    # Obtener datos para la vista
     user_data = {
         'id': current_user.id,
         'username': current_user.username,
@@ -204,9 +208,8 @@ def perfil():
         'fecha_registro': current_user.fecha_registro if hasattr(current_user, 'fecha_registro') else None,
     }
     
-    # Obtener información del personal asociado si existe
     try:
-        if legajo_service and hasattr(current_user, 'personal_id'):
+        if legajo_service and hasattr(current_user, 'personal_id') and current_user.personal_id:
             personal = legajo_service.get_personal_by_id(current_user.personal_id)
             if personal:
                 user_data['personal_info'] = {
@@ -222,138 +225,76 @@ def perfil():
         current_app.logger.warning(f"No se pudo obtener datos personales: {str(e)}")
     
     if request.method == 'POST':
-        # Verificar si es carga de foto de carnet
+        # --- CARGA DE FOTO DE PERFIL ---
         if 'foto_carnet' in request.files:
             archivo = request.files['foto_carnet']
             
             if archivo and archivo.filename != '':
-                # Validar archivo usando FileValidationService
+                # 1. Validar archivo
                 is_valid, error_message = FileValidationService.validate_file(
-                    archivo, 
-                    allowed_types=['jpg', 'jpeg', 'png']
+                    archivo, allowed_types=['jpg', 'jpeg', 'png']
                 )
                 
                 if not is_valid:
-                    current_app.logger.warning(f"SEGURIDAD: Intento de subir foto de carnet inválida - {current_user.username}")
-                    flash(error_message or 'Tipo de archivo no permitido. Solo JPG, JPEG o PNG.', 'danger')
+                    flash(error_message or 'Archivo no permitido.', 'danger')
                     return redirect(url_for('auth.perfil'))
                 
                 try:
-                    # Usar directorio de fotos de perfil desde config
+                    from PIL import Image, ImageOps # 🚀 IMPORTANTE: ImageOps para el recorte
                     fotos_dir = current_app.config.get('FOTOS_PERFIL_DIR')
-                    
                     if not fotos_dir:
-                        # Fallback en caso de que no esté configurado
-                        fotos_dir = os.path.join(
-                            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-                            'presentation',
-                            'static',
-                            'uploads',
-                            'fotos'
-                        )
-                        os.makedirs(fotos_dir,exist_ok=True)
+                        fotos_dir = os.path.join(current_app.root_path, 'presentation', 'static', 'uploads', 'fotos')
+                    os.makedirs(fotos_dir, exist_ok=True)
                     
-                    # Procesar imagen con PIL
-                    from PIL import Image
-                    import io
-                    import time
-                    
-                    # Leer la imagen
+                    # 2. Procesar imagen
                     imagen = Image.open(archivo.stream)
                     
-                    # Convertir RGBA a RGB si es necesario
+                    # Convertir a RGB si tiene transparencia (PNG)
                     if imagen.mode in ('RGBA', 'LA', 'P'):
-                        rgb_imagen = Image.new('RGB', imagen.size, (255, 255, 255))
-                        if imagen.mode == 'P':
-                            imagen = imagen.convert('RGBA')
-                        rgb_imagen.paste(imagen, mask=imagen.split()[-1] if imagen.mode == 'RGBA' else None)
-                        imagen = rgb_imagen
+                        imagen = imagen.convert('RGB')
                     
-                    # Redimensionar a 800x800 manteniendo proporción
-                    max_size = (800, 800)
-                    imagen.thumbnail(max_size, Image.Resampling.LANCZOS)
+                    # 🚀 LA MEJORA: ImageOps.fit recorta y rellena el cuadrado de 800x800
+                    # Esto evita que la foto se vea pequeña con bordes blancos.
+                    new_img = ImageOps.fit(imagen, (800, 800), Image.Resampling.LANCZOS)
                     
-                    # Crear nueva imagen cuadrada con fondo blanco
-                    new_img = Image.new('RGB', (800, 800), (255, 255, 255))
-                    # Centrar la imagen redimensionada
-                    offset = ((800 - imagen.width) // 2, (800 - imagen.height) // 2)
-                    new_img.paste(imagen, offset)
-                    
-                    # ✅ CORRECCIÓN: Usar nombre fijo para sobrescribir foto anterior
                     filename = f"foto_{current_user.id}.jpg"
                     filepath = os.path.join(fotos_dir, filename)
                     
-                    # ✅ ELIMINAR foto anterior si existe (fotos con timestamp antiguo)
-                    try:
-                        for old_file in os.listdir(fotos_dir):
-                            # Eliminar cualquier foto anterior de este usuario
-                            if old_file.startswith(f"foto_{current_user.id}_") or old_file == filename:
-                                old_filepath = os.path.join(fotos_dir, old_file)
-                                if os.path.exists(old_filepath):
-                                    os.remove(old_filepath)
-                                    current_app.logger.info(f"Foto anterior eliminada: {old_file}")
-                    except Exception as e:
-                        current_app.logger.warning(f"No se pudo eliminar foto anterior: {e}")
-                    
-                    # Guardar con calidad optimizada
+                    # 3. Guardar optimizado
                     new_img.save(filepath, 'JPEG', quality=85, optimize=True)
                     
-                    # Actualizar el campo foto_perfil del usuario en la base de datos
+                    # 4. Actualizar BD y Auditoría
                     if usuario_service:
                         usuario_service.update_foto_perfil(current_user.id, filename)
                     
-                    # Registrar en bitácora
                     audit_service = current_app.config.get('AUDIT_SERVICE')
                     if audit_service:
-                        audit_service.log(
-                            current_user.id,
-                            'Usuario',
-                            'ACTUALIZAR_FOTO',
-                            f"Usuario {current_user.username} actualizó su foto de perfil"
-                        )
+                        audit_service.log(current_user.id, 'Usuario', 'ACTUALIZAR_FOTO', f"Foto actualizada")
                     
-                    current_app.logger.info(f"AUDITORÍA: Usuario {current_user.username} subió foto de perfil a {fotos_dir}")
-                    flash('¡Foto de perfil actualizada y optimizada correctamente!', 'success')
-                    
-                except Exception as e:
-                    current_app.logger.error(f"Error al guardar foto de perfil: {str(e)}")
-                    flash('Ocurrió un error al guardar la foto.', 'danger')
+                    flash('¡Foto de perfil actualizada con éxito!', 'success')
+                    return redirect(url_for('auth.perfil'))
                 
-                return redirect(url_for('auth.perfil'))
-        
-        # Manejo de cambio de contraseña (existente)
+                except Exception as e:
+                    current_app.logger.error(f"Error al guardar foto: {str(e)}")
+                    flash('Ocurrió un error al guardar la foto.', 'danger')
+                    return redirect(url_for('auth.perfil'))
+
+        # --- CAMBIO DE CONTRASEÑA ---
         password_actual = request.form.get('password_actual')
         password_nueva = request.form.get('password_nueva')
         password_confirmacion = request.form.get('password_confirmacion')
 
-        # Validaciones básicas
-        if password_actual and password_nueva and password_confirmacion:
+        if password_actual and password_nueva:
             if password_nueva != password_confirmacion:
-                flash('Las nuevas contraseñas no coinciden.', 'danger')
-                return redirect(url_for('auth.perfil'))
-            
-            if len(password_nueva) < 8:
-                flash('La contraseña debe tener al menos 8 caracteres.', 'danger')
-                return redirect(url_for('auth.perfil'))
-
-            # Verificar contraseña actual
-            if not current_user.check_password(password_actual):
-                flash('La contraseña actual es incorrecta.', 'danger')
-                return redirect(url_for('auth.perfil'))
-
-            try:
-                # Actualizar contraseña usando el servicio
-                if usuario_service:
-                    usuario_service.update_password(current_user.id, password_nueva) 
-                else:
-                    from werkzeug.security import generate_password_hash
-                    current_user.password_hash = generate_password_hash(password_nueva)
-                    from app import db
-                    db.session.commit()
-
-                flash('¡Contraseña actualizada correctamente!', 'success')
-            except Exception as e:
-                current_app.logger.error(f"Error al cambiar password: {str(e)}")
-                flash('Ocurrió un error al actualizar la contraseña.', 'danger')
+                flash('Las contraseñas no coinciden.', 'danger')
+            elif not current_user.check_password(password_actual):
+                flash('Contraseña actual incorrecta.', 'danger')
+            else:
+                try:
+                    usuario_service.update_password(current_user.id, password_nueva)
+                    flash('¡Contraseña actualizada!', 'success')
+                except Exception as e:
+                    flash('Error al actualizar contraseña.', 'danger')
+            return redirect(url_for('auth.perfil'))
 
     return render_template('auth/perfil.html', user=current_user, user_data=user_data)

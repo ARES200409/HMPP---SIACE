@@ -12,6 +12,7 @@ from app.application.services.file_validation_service import FileValidationServi
 from app.domain.models.personal import Personal
 from app.core.security import IDORProtection
 from datetime import datetime
+from werkzeug.security import generate_password_hash
 legajo_bp = Blueprint('legajo', __name__, url_prefix='/legajo')
 
 @legajo_bp.route('/personal/carga_masiva', methods=['GET', 'POST'])
@@ -219,48 +220,68 @@ def crear_personal():
             
     return render_template('admin/crear_personal.html', form=form, titulo="Nuevo Legajo - Paso 1: Datos Personales")
 
+# app/presentation/routes/legajo_routes.py
+# ... (imports existentes) ...
+from app.domain.models.usuario import Usuario, ROL_ID_PERSONAL
+
 @legajo_bp.route('/personal/completar/<int:personal_id>', methods=['GET', 'POST'])
 @login_required
 @role_required('AdministradorLegajos')
 def completar_legajo(personal_id):
-    """Paso 2: Registrar contrato y cargo inicial."""
+    """Paso 2: Registrar contrato y auto-crear usuario para el empleado."""
     legajo_service = current_app.config['LEGAJO_SERVICE']
-    repo = legajo_service._personal_repo # Acceso directo al repo para métodos nuevos
+    repo = legajo_service._personal_repo 
     
-    # Obtener datos del personal para mostrar el nombre
     persona = repo.find_by_id(personal_id)
     if not persona:
         flash('Error: El personal no existe.', 'danger')
         return redirect(url_for('legajo.listar_personal'))
 
     form = ContratoInicialForm()
-    
-    # Cargar las opciones de los selects
     form.id_tipo_contrato.choices = [('', '-- Seleccione Tipo --')] + repo.get_tipos_contrato_for_select()
     form.id_cargo.choices = [('', '-- Seleccione Cargo --')] + repo.get_cargos_for_select()
     form.id_unidad.choices = [('', '-- Seleccione Unidad --')] + repo.get_unidades_for_select()
 
-    if request.method == 'GET':
-        # Pre-llenar la unidad si ya la tenemos del paso 1
-        form.id_unidad.data = str(persona.id_unidad)
-        form.fecha_inicio.data = persona.fecha_ingreso # Sugerir fecha de ingreso
-
     if form.validate_on_submit():
         try:
+            # 1. Registrar contrato y cargo en SQL Server
             data = form.data
             data['id_personal'] = personal_id
-            
             repo.registrar_contrato_inicial(data)
             
-            flash('¡Legajo completado exitosamente! Contrato y cargo registrados.', 'success')
+            # ==========================================================
+            # 🚀 CREACIÓN AUTOMÁTICA DE ACCESO (DNI = USUARIO Y CLAVE)
+            # ==========================================================
+            dni_empleado = persona.dni.strip()
             
-            # Ahora sí vamos a la confirmación final con todo listo
-            # Recuperamos datos de usuario si existen (opcional, o redirigir a ver legajo)
+            # Verificamos si ya existe el usuario para no duplicar
+            usuario_existente = legajo_service.get_usuario_por_username(dni_empleado)
+            
+            if not usuario_existente:
+                # Creamos el objeto de dominio Usuario
+                nuevo_acceso = Usuario(
+                    id_usuario=None,
+                    username=dni_empleado,
+                    id_rol=ROL_ID_PERSONAL, # Forzamos el ID 5
+                    email=persona.email,
+                    # El DNI se encripta como contraseña inicial
+                    password_hash=generate_password_hash(dni_empleado),
+                    id_personal=personal_id,
+                    activo=True,
+                    nombre_rol='Personal'
+                )
+                
+                # Guardamos el usuario a través del servicio
+                legajo_service.crear_usuario_acceso(nuevo_acceso)
+                current_app.logger.info(f"Acceso creado: {dni_empleado} con Rol 5.")
+            # ==========================================================
+            
+            flash('¡Legajo y acceso web creados exitosamente!', 'success')
             return redirect(url_for('legajo.ver_legajo', personal_id=personal_id))
             
         except Exception as e:
-            current_app.logger.error(f"Error paso 2: {e}")
-            flash('Error al guardar el contrato.', 'danger')
+            current_app.logger.error(f"Error en Paso 2 para ID {personal_id}: {e}")
+            flash('Error al procesar el contrato o el acceso del usuario.', 'danger')
 
     return render_template('admin/completar_legajo.html', form=form, persona=persona)
 

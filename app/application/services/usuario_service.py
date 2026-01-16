@@ -17,40 +17,30 @@ class UsuarioService:
 
     def attempt_login(self, username, password):
         """
-        Verifica las credenciales. Si son válidas, envía un código 2FA por correo
-        en producción, o lo imprime en consola para desarrollo.
-        
-        Retorna:
-            - user_id (int): Si el login fue exitoso
-            - None: Si las credenciales son inválidas
-            - ('email_error', str): Tupla si falla el envío de email
+        Valida credenciales y genera código 2FA.
+        Retorna: (user_id, raw_code) si es exitoso, o None.
         """
         user = self._usuario_repo.find_by_username_with_email(username)
 
         if user and user.activo and user.check_password(password):
+            # 1. Generar código real de 6 dígitos
             code = ''.join(random.choices(string.digits, k=6))
+            
+            # 2. Encriptar para la Base de Datos (Seguridad)
             hashed_code = generate_password_hash(code)
             expiry_date = datetime.utcnow() + timedelta(minutes=10)
 
+            # 3. Guardar el HASH en SQL Server
             self._usuario_repo.set_2fa_code(user.id, hashed_code, expiry_date)
 
-            # --- Lógica Condicional para 2FA ---
-            if not current_app.config.get('DEBUG'):
-                # Modo Producción: Enviar correo electrónico.
-                try:
-                    self._email_service.send_2fa_code(user.email, user.nombre_completo or user.username, code)
-                    logger.info(f"Código 2FA enviado por correo a {user.email}")
-                except Exception as e:
-                    logger.error(f"Fallo al enviar correo 2FA a {user.email}: {e}")
-                    # Retornar tupla indicando error de email
-                    return ('email_error', f"No se pudo enviar el código de verificación a {user.email}. Por favor, verifica tu correo electrónico o contacta al administrador.")
-            else:
-                # Modo Desarrollo: Imprimir en consola.
+            # 4. Modo Desarrollo: Imprimir en consola para VS Code
+            if current_app.config.get('DEBUG'):
                 print("---------------------------------------------------------")
                 print(f"--- CÓDIGO 2FA (PARA DESARROLLO): {code} ---")
                 print("---------------------------------------------------------")
             
-            return user.id
+            # 🚀 RETORNO CLAVE: Enviamos el ID y el código real (limpio)
+            return (user.id, code) 
         
         return None
 
@@ -61,6 +51,7 @@ class UsuarioService:
         if not user or not user.two_factor_code or user.two_factor_expiry < datetime.utcnow():
             return None
 
+        # Compara el código ingresado con el HASH de la BD
         if user.check_2fa_code(code):
             self._usuario_repo.clear_2fa_code(user.id)
             return user
@@ -249,3 +240,33 @@ class UsuarioService:
         except Exception as e:
             logger.error(f"Error al crear usuario: {str(e)}")
             return f"Error al crear usuario: {str(e)}", "danger"
+        
+
+    def get_current_2fa(self, user_id):
+        """
+        ¡CUIDADO!: Este método devuelve el código tal como está en la BD (encriptado).
+        Solo úsalo si necesitas el HASH. Para el correo, usa el retorno de attempt_login.
+        """
+        try:
+            user = self._usuario_repo.find_by_id(user_id)
+            if user and user.two_factor_code:
+                return user.two_factor_code
+            return None
+        except Exception as e:
+            logger.error(f"Error al recuperar código 2FA: {e}")
+            return None
+
+    # --- Otros métodos de gestión (Sin cambios) ---
+    def get_user_by_id(self, user_id):
+        return self._usuario_repo.find_by_id(user_id)
+
+    def update_last_login(self, user_id):
+        self._usuario_repo.update_last_login(user_id)
+
+    def get_all_users_with_roles(self):
+        try:
+            return self._usuario_repo.find_all_users_with_roles()
+        except Exception as e:
+            logger.error(f"Error al obtener usuarios con roles: {e}")
+            return []
+    

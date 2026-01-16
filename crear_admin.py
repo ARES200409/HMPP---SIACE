@@ -83,7 +83,7 @@ def crear_usuario_admin():
     
     try:
         # Verificar si ya existen usuarios
-        cursor.execute("SELECT COUNT(*) FROM Usuarios WHERE rol = 'Sistemas'")
+        cursor.execute("SELECT COUNT(*) FROM Usuarios WHERE id_rol = '1'")
         count = cursor.fetchone()[0]
         
         if count > 0:
@@ -123,13 +123,12 @@ def crear_usuario_admin():
         cargo = input("Cargo [Administrador de Sistemas]: ").strip() or "Administrador de Sistemas"
         area = input("Área [Sistemas]: ").strip() or "Sistemas"
         
-        # Insertar en tabla Personal
+        # Insertar en tabla Personal (ajustado a tu imagen de SSMS)
         print_info("Creando registro de personal...")
         cursor.execute("""
-            INSERT INTO Personal (dni, nombres, apellido_paterno, apellido_materno, 
-                                 email, telefono, cargo, area, estado)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Activo')
-        """, dni, nombres, apellido_paterno, apellido_materno, email, telefono, cargo, area)
+            INSERT INTO Personal (dni, nombres, apellidos, sexo, email, telefono, id_unidad, activo)
+            VALUES (?, ?, ?, 'M', ?, ?, 1, 1)
+        """, dni, nombres, f"{apellido_paterno} {apellido_materno}", email, telefono)
         
         # Obtener el ID del personal recién creado
         cursor.execute("SELECT @@IDENTITY")
@@ -168,8 +167,8 @@ def crear_usuario_admin():
         # Insertar en tabla Usuarios
         print_info("Creando usuario...")
         cursor.execute("""
-            INSERT INTO Usuarios (username, email, password_hash, rol, activo, id_personal)
-            VALUES (?, ?, ?, 'Sistemas', 1, ?)
+            INSERT INTO Usuarios (username, email, password_hash, id_rol, activo, id_personal)
+            VALUES (?, ?, ?, 1, 1, ?)
         """, username, email, password_hash, id_personal)
         
         # Confirmar cambios

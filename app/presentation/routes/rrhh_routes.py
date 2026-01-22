@@ -1,40 +1,27 @@
-# app/presentation/routes/rrhh_routes.py
-
-from flask import Blueprint, render_template
-from flask_login import current_user
-# --- INICIO DE LA CORRECCIÓN ---
-from flask_login import login_required
+from flask import Blueprint, render_template, request, current_app, flash, redirect, url_for, jsonify, send_file
+from flask_login import current_user, login_required
 from app.decorators import role_required
-# --- FIN DE LA CORRECCIÓN ---
+from datetime import datetime
+from app.application.forms import FiltroPersonalForm, DocumentoForm
+
+# CORRECCIÓN VITAL: Importamos 'db' que es el alias de get_db_write definido en __init__.py
+from app.database import db
 
 # Creamos el Blueprint para el rol de RRHH
-# Todas las rutas definidas aquí comenzarán con /rrhh
 rrhh_bp = Blueprint('rrhh', __name__, url_prefix='/rrhh')
 
 @rrhh_bp.route('/inicio_rrhh')
 @login_required
 @role_required('RRHH')
 def inicio_rrhh():
-    """
-    Dashboard principal para el rol de Recursos Humanos.
-    """
+    """Dashboard principal para el rol de Recursos Humanos."""
     return render_template('rrhh/inicio_rrhh.html', user=current_user)
-
-
-
-# Acontinución se tiene la funcionalidad de listar y ver legajos, solo lectura para RRHH
-
-from flask import render_template, request, current_app, flash, redirect, url_for
-from datetime import datetime
-from app.application.forms import FiltroPersonalForm, DocumentoForm
 
 @rrhh_bp.route('/personal')
 @login_required
 @role_required('RRHH')
 def listar_personal():
-    """
-    Listado de legajos para RRHH (solo lectura).
-    """
+    """Listado de legajos para RRHH."""
     form = FiltroPersonalForm(request.args)
     page = request.args.get('page', 1, type=int)
     filters = {'dni': form.dni.data, 'nombres': form.nombres.data}
@@ -54,18 +41,15 @@ def listar_personal():
 @login_required
 @role_required('RRHH')
 def ver_legajo(personal_id):
-    """
-    Vista de detalle de legajo para RRHH.
-    """
+    """Vista de detalle de legajo para RRHH."""
     legajo_service = current_app.config['LEGAJO_SERVICE']
     try:
-        # Se pasa current_user para cualquier validación de permisos en el servicio
         legajo_completo = legajo_service.get_personal_details(personal_id, current_user)
     except PermissionError as e:
         flash(str(e), 'danger')
         return redirect(url_for('rrhh.listar_personal'))
     except Exception as e:
-        current_app.logger.error(f"Error al ver legajo {personal_id} para RRHH: {e}")
+        current_app.logger.error(f"Error al ver legajo {personal_id}: {e}")
         flash("Ocurrió un error al cargar el legajo.", "danger")
         return redirect(url_for('rrhh.listar_personal'))
 
@@ -86,18 +70,12 @@ def ver_legajo(personal_id):
         today=datetime.now().date()
     )
 
-# Acontinuación se tiene  la funcionalidad de descargar la lista de personal en formato Excel, simula el REPORTE
-
-# app/presentation/routes/rrhh_routes.py
-from flask import send_file
-from flask import current_app, send_file
-
 @rrhh_bp.route('/reporte/empleados/excel')
 @login_required
 @role_required('RRHH')
 def exportar_empleados_excel():
-    """Exporta la lista de empleados a un archivo Excel (solo lectura para RRHH)."""
-    legajo_service = current_app.config['LEGAJO_SERVICE']  # recuperar instancia
+    """Exporta la lista de empleados a Excel."""
+    legajo_service = current_app.config['LEGAJO_SERVICE']
     excel_stream = legajo_service.generate_general_report_excel()
 
     return send_file(
@@ -107,41 +85,45 @@ def exportar_empleados_excel():
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
-
-# Acontinuacón este será el grafico de panel: Cantidad de empleados por unidad administrativa
-
 @rrhh_bp.route('/panel')
 @login_required
 def panel_rrhh():
+    """Gráficos y estadísticas para RRHH."""
     try:
         legajo_service = current_app.config['LEGAJO_SERVICE']
-        
-        # Obtener datos de empleados por unidad
-        empleados_unidad = legajo_service.get_empleados_por_unidad()
-        empleados_unidad = empleados_unidad if empleados_unidad else []
-        print("DEBUG empleados_unidad:", empleados_unidad)
-
-        # Obtener datos de empleados por estado (activo/inactivo)
-        empleados_estado = legajo_service.get_empleados_activos_inactivos()
-        empleados_estado = empleados_estado if empleados_estado else []
-        print("DEBUG empleados_estado:", empleados_estado)
-
-        # Obtener datos de empleados por sexo
-        empleados_sexo = legajo_service.get_empleados_por_sexo()
-        empleados_sexo = empleados_sexo if empleados_sexo else []
-        print("DEBUG empleados_sexo:", empleados_sexo)
-
+        empleados_unidad = legajo_service.get_empleados_por_unidad() or []
+        empleados_estado = legajo_service.get_empleados_activos_inactivos() or []
+        empleados_sexo = legajo_service.get_empleados_por_sexo() or []
     except Exception as e:
-        print(f"ERROR al obtener datos de estadísticas: {str(e)}")
-        empleados_unidad = []
-        empleados_estado = []
-        empleados_sexo = []
-        flash('No se pudieron cargar las estadísticas. Intente nuevamente.', 'warning')
+        current_app.logger.error(f"Error en panel RRHH: {e}")
+        empleados_unidad, empleados_estado, empleados_sexo = [], [], []
+        flash('No se pudieron cargar las estadísticas.', 'warning')
 
-    # 👇 Aquí devolvemos la plantilla
     return render_template(
         'rrhh/panel.html',
         empleados_unidad=empleados_unidad,
         empleados_estado=empleados_estado,
         empleados_sexo=empleados_sexo
     )
+
+@rrhh_bp.route('/personal/cambiar_estado/<int:personal_id>', methods=['POST'])
+@login_required
+@role_required('RRHH')
+def cambiar_estado_laboral(personal_id):
+    """Cambia el estado activo/inactivo usando el procedimiento sp_cambiar_estado_laboral."""
+    data = request.get_json()
+    nuevo_estado = data.get('estado')
+
+    try:
+        # Ahora 'db' está correctamente definido como la función de conexión
+        conn = db() 
+        cursor = conn.cursor()
+        
+        # Ejecutamos el procedimiento almacenado
+        cursor.execute("EXEC sp_cambiar_estado_laboral ?, ?", (personal_id, nuevo_estado))
+        conn.commit() 
+        
+        return jsonify({'success': True, 'message': 'Estado actualizado en la HMPP.'})
+    except Exception as e:
+        current_app.logger.error(f"Error al cambiar estado: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500

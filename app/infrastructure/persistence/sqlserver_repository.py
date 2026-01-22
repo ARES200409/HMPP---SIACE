@@ -1,5 +1,5 @@
 # RUTA: app/infrastructure/persistence/sqlserver_repository.py
-
+from datetime import datetime
 import logging
 from app.database.connector import get_db_read, get_db_write
 from app.domain.models.usuario import Usuario
@@ -693,32 +693,59 @@ class SqlServerPersonalRepository(IPersonalRepository):
 
 # ... dentro de class SqlServerPersonalRepository ...
 
+    # 1. ACTUALIZACIÓN: Obtener Legajo Completo (Forzando lectura de fechas)
+    # Busca este método dentro de SqlServerPersonalRepository:
+
     def get_full_legajo_by_id(self, personal_id):
+        """
+        Obtiene el legajo completo de un trabajador. 
+        CORREGIDO: Incluye el nombre descriptivo del tipo de documento para la tabla.
+        """
         conn = get_db_read()
         cursor = conn.cursor()
-        
-        try: # 💡 CORRECCIÓN: Agregar bloque try
+        try:
+            # 1. Ejecutar el procedimiento original para la información personal básica
             cursor.execute("{CALL sp_obtener_legajo_completo_por_personal(?)}", personal_id)
-            
-            # El primer resultado es la información del personal.
             personal_info = _row_to_dict(cursor, cursor.fetchone())
-            if not personal_info:
+            
+            if not personal_info: 
                 return None 
-
+                
             legajo = {"personal": personal_info}
             
-            # Se procesan los siguientes conjuntos de resultados.
-            if cursor.nextset(): legajo["estudios"] = [_row_to_dict(cursor, row) for row in cursor.fetchall()]
-            if cursor.nextset(): legajo["capacitaciones"] = [_row_to_dict(cursor, row) for row in cursor.fetchall()]
-            if cursor.nextset(): legajo["contratos"] = [_row_to_dict(cursor, row) for row in cursor.fetchall()]
-            if cursor.nextset(): legajo["historial_laboral"] = [_row_to_dict(cursor, row) for row in cursor.fetchall()]
-            if cursor.nextset(): legajo["licencias"] = [_row_to_dict(cursor, row) for row in cursor.fetchall()]
-            if cursor.nextset(): legajo["documentos"] = [_row_to_dict(cursor, row) for row in cursor.fetchall()]
-                
+            # 2. Cargar sets intermedios del Stored Procedure (Estudios, Contratos, etc.)
+            if cursor.nextset(): legajo["estudios"] = [_row_to_dict(cursor, r) for r in cursor.fetchall()]
+            if cursor.nextset(): legajo["capacitaciones"] = [_row_to_dict(cursor, r) for r in cursor.fetchall()]
+            if cursor.nextset(): legajo["contratos"] = [_row_to_dict(cursor, r) for r in cursor.fetchall()]
+            if cursor.nextset(): legajo["historial_laboral"] = [_row_to_dict(cursor, r) for r in cursor.fetchall()]
+            if cursor.nextset(): legajo["licencias"] = [_row_to_dict(cursor, r) for r in cursor.fetchall()]
+            
+            # --- SOLUCIÓN PARA LA COLUMNA VACÍA Y EL CONTADOR 0 ---
+            # Hacemos el JOIN con 'tipo_documento' para traer el 'nombre_tipo' (ej: DNI)
+            query_docs = """
+                SELECT 
+                    d.id_documento, 
+                    d.nombre_archivo, 
+                    d.descripcion, 
+                    d.fecha_subida, 
+                    d.id_tipo, 
+                    d.id_seccion, 
+                    d.fecha_inicio, 
+                    d.fecha_fin,
+                    td.nombre_tipo  -- <--- ESTO ES LO QUE LLENA TU COLUMNA VACÍA
+                FROM documentos d
+                LEFT JOIN tipo_documento td ON d.id_tipo = td.id_tipo
+                WHERE d.id_personal = ? AND d.activo = 1
+                ORDER BY d.fecha_subida DESC
+            """
+            cursor.execute(query_docs, personal_id)
+            # Guardamos los resultados para que el HTML los reconozca por nombre
+            legajo["documentos"] = [_row_to_dict(cursor, row) for row in cursor.fetchall()]
+            
             return legajo
-        
-        finally: # 💡 CORRECCIÓN: Agregar bloque finally para cerrar la conexión.
+        finally:
             cursor.close()
+        
             
     # Llama a un SP para listar, filtrar y paginar al personal.
     def get_all_paginated(self, page, per_page, filters):
@@ -762,23 +789,32 @@ class SqlServerPersonalRepository(IPersonalRepository):
         conn.commit()
         return new_id
     
-    # Llama a un SP para añadir un documento.
+    # 2. ACTUALIZACIÓN: Guardar Documento (Sincronizado con tus nuevas columnas)
     def add_document(self, doc_data, file_bytes):
         conn = get_db_write()
         cursor = conn.cursor()
+        # CORRECCIÓN: 'archivo' en lugar de 'archivo_binario'
+        query = """
+            INSERT INTO documentos (
+                id_personal, id_tipo, id_seccion, nombre_archivo, 
+                descripcion, archivo, activo, fecha_subida, 
+                fecha_inicio, fecha_fin
+            ) VALUES (?, ?, ?, ?, ?, ?, 1, GETDATE(), ?, ?)
+        """
         params = (
-            doc_data.get('id_personal'), 
-            doc_data.get('id_tipo'), 
-            doc_data.get('id_seccion'),
-            doc_data.get('nombre_archivo'), 
-            doc_data.get('fecha_emision'), 
-            doc_data.get('fecha_vencimiento'),
-            doc_data.get('descripcion'), 
-            file_bytes, 
-            doc_data.get('hash_archivo')
+            doc_data.get('id_personal'), doc_data.get('id_tipo'), 
+            doc_data.get('id_seccion'), doc_data.get('nombre_archivo'), 
+            doc_data.get('descripcion'), file_bytes,
+            doc_data.get('fecha_inicio'), doc_data.get('fecha_fin')
         )
-        cursor.execute("{CALL sp_subir_documento(?, ?, ?, ?, ?, ?, ?, ?, ?)}", params)
-        conn.commit()
+        try:
+            cursor.execute(query, params)
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            raise e
+        finally:
+            cursor.close()
     
     # Métodos para obtener listas para los formularios SelectField.
     def get_unidades_for_select(self):
@@ -979,64 +1015,47 @@ class SqlServerPersonalRepository(IPersonalRepository):
             print(f"ERROR en count_empleados_por_sexo: {str(e)}")
             return []
 
+
     def get_deleted_documents(self):
         """
-        Obtiene documentos eliminados.
-        Usa print() para depurar por consola y normaliza claves a minúsculas.
+        Obtiene documentos eliminados unificados (Legajo + Récord Laboral).
+        Consulta la vista v_auditoria_papelera_unificada.
         """
-        
         deleted_docs = []
-        conn = get_db_write()
+        conn = get_db_read()
         cursor = conn.cursor()
         
         try:
-            # INTENTO 1: Usar el SP
-            cursor.execute("{CALL sp_listar_documentos_eliminados}")
+            query = "SELECT * FROM v_auditoria_papelera_unificada ORDER BY fecha_accion DESC"
+            cursor.execute(query)
             documents = cursor.fetchall()
             
             for row in documents:
                 raw_dict = _row_to_dict(cursor, row)
                 if raw_dict:
-                    # Ver qué claves llegan realmente de la BD
-                    
-
-                    # CONVERTIR A MINÚSCULAS (Solución al problema de tabla vacía)
                     doc_dict = {k.lower(): v for k, v in raw_dict.items()}
                     
-                    # Rellenar datos faltantes si es necesario
-                    if 'nombre_personal' not in doc_dict and 'id_personal' in doc_dict:
-                        try:
-                            cursor.execute("SELECT nombres, apellidos, dni FROM personal WHERE id_personal = ?", doc_dict['id_personal'])
-                            p_row = cursor.fetchone()
-                            if p_row:
-                                doc_dict['nombre_personal'] = f"{p_row[1]}, {p_row[0]}"
-                                doc_dict['dni'] = p_row[2]
-                        except:
-                            pass
+                    # Mapeo para que el HTML no se rompa
+                    doc_dict['id_documento'] = doc_dict.get('id_interno')
+                    doc_dict['nombre_personal'] = doc_dict.get('personal')
+                    doc_dict['tipo_documento'] = doc_dict.get('tipo_doc')
+                    doc_dict['fecha_eliminacion'] = doc_dict.get('fecha_accion')
                     
-                    # Rellenar tipo si falta
-                    if 'tipo_documento' not in doc_dict and 'id_tipo' in doc_dict:
-                        try:
-                            cursor.execute("SELECT nombre_tipo FROM tipo_documento WHERE id_tipo = ?", doc_dict['id_tipo'])
-                            t_row = cursor.fetchone()
-                            if t_row:
-                                doc_dict['tipo_documento'] = t_row[0]
-                        except:
-                            pass
-
                     deleted_docs.append(doc_dict)
             
-            
-            
             return deleted_docs
-            
         except Exception as e:
-            
-            return [] # Si falla, devolvemos lista vacía por seguridad en esta prueba
+            logger.error(f"Error en auditoría unificada: {e}")
+            return []
+        finally:
+            cursor.close()
 
 
     def recover_document(self, document_id):
-        """Reactiva un documento marcado como eliminado."""
+        """
+        Restaura un documento de la papelera unificada (Récord Laboral o Legajo).
+        Aplica la lógica de 'Intento y Error' en ambas tablas.
+        """
         import logging
         logger = logging.getLogger(__name__)
         
@@ -1044,30 +1063,48 @@ class SqlServerPersonalRepository(IPersonalRepository):
         cursor = conn.cursor()
         
         try:
-            # INTENTO 1: Usar SP si existe
-            logger.info(f"Intentando recuperar documento {document_id} usando SP...")
-            cursor.execute("{CALL sp_recuperar_documento(?)}", document_id)
-            conn.commit()
-            logger.info(f"Documento {document_id} recuperado exitosamente via SP.")
+            # --- FASE 1: Intentar en Récord Laboral ---
+            # Buscamos reactivar el registro en la nueva tabla de pagos
+            cursor.execute("UPDATE record_laboral SET activo = 1 WHERE id_record = ?", document_id)
             
-        except Exception as sp_error:
-            logger.warning(f"SP sp_recuperar_documento falló: {sp_error}. Intentando UPDATE directo...")
-            
+            if cursor.rowcount > 0:
+                conn.commit()
+                logger.info(f"Documento {document_id} recuperado de record_laboral exitosamente.")
+                return True
+
+            # --- FASE 2: Intentar en Legajos (Tu lógica original) ---
             try:
-                # INTENTO 2: Fallback - UPDATE directo
+                # INTENTO 1: Usar SP si existe
+                logger.info(f"Intentando recuperar de legajos usando SP...")
+                cursor.execute("{CALL sp_recuperar_documento(?)}", document_id)
+                conn.commit()
+                logger.info(f"Documento {document_id} recuperado de legajos via SP.")
+                return True
+                
+            except Exception as sp_error:
+                logger.warning(f"SP falló: {sp_error}. Intentando UPDATE directo en documentos...")
+                
+                # INTENTO 2: Fallback - UPDATE directo en tabla documentos
                 cursor.execute(
                     "UPDATE documentos SET activo = 1, fecha_eliminacion = NULL WHERE id_documento = ?",
                     document_id
                 )
                 conn.commit()
-                logger.info(f"Documento {document_id} recuperado exitosamente via UPDATE directo.")
-                
-            except Exception as update_error:
-                logger.error(f"Error al recuperar documento {document_id} (ambos métodos fallaron): {update_error}")
-                raise
+                logger.info(f"Documento {document_id} recuperado de legajos via UPDATE directo.")
+                return True
+
+        except Exception as e:
+            logger.error(f"Error crítico al recuperar documento {document_id}: {e}")
+            conn.rollback()
+            raise
+        finally:
+            cursor.close()
 
     def permanently_delete_document(self, document_id):
-        """Elimina permanentemente un documento de la base de datos."""
+        """
+        Elimina permanentemente un documento de la BD (Récord Laboral o Legajo).
+        Asegura que el archivo desaparezca de la papelera unificada.
+        """
         import logging
         logger = logging.getLogger(__name__)
         
@@ -1075,63 +1112,65 @@ class SqlServerPersonalRepository(IPersonalRepository):
         cursor = conn.cursor()
         
         try:
-            # INTENTO 1: Usar SP si existe
-            logger.info(f"Intentando eliminar permanentemente documento {document_id} usando SP...")
-            cursor.execute("{CALL sp_eliminar_documento_permanente(?)}", document_id)
-            conn.commit()
-            logger.info(f"Documento {document_id} eliminado permanentemente via SP.")
+            # --- FASE 1: Intentar borrar de Récord Laboral ---
+            cursor.execute("DELETE FROM record_laboral WHERE id_record = ?", document_id)
             
-        except Exception as sp_error:
-            logger.warning(f"SP sp_eliminar_documento_permanente falló: {sp_error}. Intentando DELETE directo...")
-            
+            if cursor.rowcount > 0:
+                conn.commit()
+                logger.info(f"Documento {document_id} eliminado permanentemente de record_laboral.")
+                return True
+
+            # --- FASE 2: Intentar borrar de Legajos (Tu lógica original) ---
             try:
-                # INTENTO 2: Fallback - DELETE directo
+                # INTENTO 1: Usar SP si existe
+                logger.info(f"Intentando eliminación permanente en legajos usando SP...")
+                cursor.execute("{CALL sp_eliminar_documento_permanente(?)}", document_id)
+                conn.commit()
+                logger.info(f"Documento {document_id} eliminado de legajos via SP.")
+                return True
+                
+            except Exception as sp_error:
+                logger.warning(f"SP falló: {sp_error}. Intentando DELETE directo en documentos...")
+                
+                # INTENTO 2: Fallback - DELETE directo en tabla documentos
                 cursor.execute("DELETE FROM documentos WHERE id_documento = ?", document_id)
                 conn.commit()
-                logger.info(f"Documento {document_id} eliminado permanentemente via DELETE directo.")
-                
-            except Exception as delete_error:
-                logger.error(f"Error al eliminar permanentemente documento {document_id} (ambos métodos fallaron): {delete_error}")
-                raise
+                logger.info(f"Documento {document_id} eliminado de legajos via DELETE directo.")
+                return True
 
+        except Exception as e:
+            logger.error(f"Error crítico al eliminar permanentemente documento {document_id}: {e}")
+            conn.rollback()
+            raise
+        finally:
+            cursor.close()
+
+    # 3. ACTUALIZACIÓN: Búsqueda de documentos (Ya estaba bien, pero aseguramos columnas)
     def search_documents(self, query=None, id_seccion=None, id_tipo=None):
-        """
-        Busca documentos por descripción, tipo de documento o sección.
-        Retorna una lista de documentos que coinciden con los criterios.
-        """
         conn = get_db_read()
         cursor = conn.cursor()
-        
         try:
-            # Construir la consulta dinámica
             sql = """
                 SELECT 
-                    d.id_documento,
-                    d.nombre_archivo,
-                    d.descripcion,
-                    d.fecha_emision,
-                    d.fecha_subida,
-                    d.id_personal,
-                    d.id_seccion,
-                    d.id_tipo,
-                    p.dni,
-                    p.nombres,
-                    p.apellidos,
-                    ls.nombre_seccion,
-                    td.nombre_tipo
+                    d.id_documento, d.nombre_archivo, d.descripcion, d.fecha_emision,
+                    d.fecha_subida, d.fecha_inicio, d.fecha_fin, -- Columnas para alertas
+                    d.id_personal, d.id_seccion, d.id_tipo,
+                    p.dni, p.nombres, p.apellidos,
+                    ls.nombre_seccion, td.nombre_tipo
                 FROM documentos d
                 INNER JOIN personal p ON d.id_personal = p.id_personal
                 LEFT JOIN legajo_secciones ls ON d.id_seccion = ls.id_seccion
                 LEFT JOIN tipo_documento td ON d.id_tipo = td.id_tipo
                 WHERE d.activo = 1
             """
+            # ... (mantener el resto de la lógica de filtros igual)
             params = []
             
             # Filtro por texto (descripción o nombre de archivo)
             if query:
-                sql += " AND (d.descripcion LIKE ? OR d.nombre_archivo LIKE ? OR p.nombres LIKE ? OR p.apellidos LIKE ? OR p.dni LIKE ?)"
+                sql += " AND (d.descripcion LIKE ? OR d.nombre_archivo LIKE ? OR p.nombres LIKE ?)"
                 search_term = f"%{query}%"
-                params.extend([search_term, search_term, search_term, search_term, search_term])
+                params.extend([search_term, search_term, search_term])
             
             # Filtro por sección
             if id_seccion and int(id_seccion) > 0:
@@ -1144,7 +1183,6 @@ class SqlServerPersonalRepository(IPersonalRepository):
                 params.append(int(id_tipo))
             
             sql += " ORDER BY d.fecha_subida DESC"
-            
             cursor.execute(sql, params)
             return [_row_to_dict(cursor, row) for row in cursor.fetchall()]
             
@@ -1356,7 +1394,209 @@ class SqlServerPersonalRepository(IPersonalRepository):
             raise e
         finally:
             cursor.close()
+    
 
+    # RUTA: app/infrastructure/repositories/sqlserver_repository.py
+
+    def get_documentos_filtrados(self, id_personal, nombre_seccion):
+        """
+        Trae solo los documentos de una sección específica (ej: 'Récord Laboral').
+        Esto mantiene la tabla de RRHH limpia de otros archivos del legajo.
+        """
+        conn = get_db_read()
+        cursor = conn.cursor()
+        query = """
+            SELECT 
+                d.id_documento, d.nombre_archivo, d.descripcion, 
+                d.fecha_subida, d.fecha_inicio, d.fecha_fin,
+                td.nombre_tipo
+            FROM documentos d
+            JOIN tipo_documento td ON d.id_tipo = td.id_tipo
+            JOIN legajo_secciones ls ON d.id_seccion = ls.id_seccion
+            WHERE d.id_personal = ? 
+            AND ls.nombre_seccion = ?  -- Filtro por nombre de sección
+            AND d.activo = 1
+            ORDER BY d.fecha_subida DESC
+        """
+        cursor.execute(query, id_personal, nombre_seccion)
+        return [_row_to_dict(cursor, row) for row in cursor.fetchall()]
+
+
+
+        # app/infrastructure/persistence/sqlserver_repository.py
+
+    def get_personal_by_id(self, id_personal):
+            """
+            Obtiene la información básica de un trabajador para los encabezados de RRHH.
+            """
+            conn = get_db_read()
+            cursor = conn.cursor()
+            try:
+                # Seleccionamos nombres y DNI para el banner del Récord Laboral
+                query = """
+                    SELECT id_personal, nombres, apellidos, dni, activo 
+                    FROM personal 
+                    WHERE id_personal = ? 
+                """
+                cursor.execute(query, id_personal)
+                row = cursor.fetchone()
+                
+                # _row_to_dict convierte la fila de SQL en un objeto que Flask entiende
+                return _row_to_dict(cursor, row) if row else None
+            except Exception as e:
+                print(f"Error en get_personal_by_id: {e}")
+                return None
+            finally:
+                cursor.close()
+
+    def add_record_laboral(self, data, file_bytes):
+        """Guarda el récord capturando el tiempo exacto del sistema."""
+        conn = get_db_write()
+        cursor = conn.cursor()
+        try:
+            # Ahora que importamos datetime, esto funcionará:
+            ahora = datetime.now() 
+            
+            query = """
+                INSERT INTO record_laboral 
+                (id_personal, anio, mes, dia, hora, nombre_archivo, archivo_binario, 
+                 descripcion, fecha_inicio, fecha_fin_vencimiento)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """
+            params = (
+                data['id_personal'], ahora.year, ahora.month, ahora.day, ahora.strftime('%H:%M:%S'),
+                data['nombre_archivo'], file_bytes, data['descripcion'],
+                data['fecha_inicio'], data['fecha_fin']
+            )
+            cursor.execute(query, params)
+            conn.commit()
+            return True
+        except Exception as e:
+            # Este es el mensaje que viste en la terminal:
+            print(f"!!! FALLO EN SQL SERVER: {e}") 
+            conn.rollback()
+            return False
+        finally:
+            cursor.close()
+
+    def get_records_by_personal(self, id_personal):
+                """Trae el historial de la nueva tabla."""
+                conn = get_db_read()
+                cursor = conn.cursor()
+                try:
+                    query = "SELECT * FROM record_laboral WHERE id_personal = ? AND activo = 1 ORDER BY anio DESC, mes DESC"
+                    cursor.execute(query, id_personal)
+                    return [_row_to_dict(cursor, row) for row in cursor.fetchall()]
+                finally:
+                    cursor.close()
+    
+    def get_record_file_by_id(self, id_record):
+        """Recupera el archivo binario de la tabla record_laboral para su visualización."""
+        conn = get_db_read()
+        cursor = conn.cursor()
+        try:
+            # Usamos el nombre de columna 'archivo_binario' que definiste en tu INSERT
+            query = "SELECT archivo_binario, nombre_archivo FROM record_laboral WHERE id_record = ?"
+            cursor.execute(query, (id_record,))
+            row = cursor.fetchone()
+            
+            if row:
+                return {
+                    'contenido': row[0],
+                    'nombre_archivo': row[1]
+                }
+            return None
+        except Exception as e:
+            print(f"Error al obtener archivo binario: {e}")
+            return None
+        finally:
+            cursor.close()
+
+    def delete_record_laboral(self, id_record):
+        """
+        Realiza una baja lógica del registro y captura el momento exacto de la acción.
+        """
+        conn = get_db_write()
+        cursor = conn.cursor()
+        try:
+            # Actualizamos activo y guardamos la fecha de eliminación actual
+            query = """
+                UPDATE record_laboral 
+                SET activo = 0, fecha_eliminacion = GETDATE() 
+                WHERE id_record = ?
+            """
+            cursor.execute(query, (id_record,))
+            conn.commit()
+            
+            return cursor.rowcount > 0
+        except Exception as e:
+            print(f"!!! ERROR AL ELIMINAR REGISTRO {id_record}: {e}")
+            conn.rollback()
+            return False
+        finally:
+            cursor.close()
+
+    def get_deleted_records_report(self):
+        """
+        Opcional: Recupera todos los registros eliminados para un reporte de auditoría.
+        """
+        conn = get_db_read()
+        cursor = conn.cursor()
+        try:
+            query = "SELECT * FROM record_laboral WHERE activo = 0 ORDER BY anio DESC"
+            cursor.execute(query)
+            return [_row_to_dict(cursor, row) for row in cursor.fetchall()]
+        finally:
+            cursor.close()
+
+    
+    # RECUPERAR Y ELIMAR MASIVO
+
+
+    def recover_all_documents(self):
+        """Restaura todos los documentos de ambas tablas de forma masiva."""
+        conn = get_db_write()
+        cursor = conn.cursor()
+        try:
+            # Restaurar Récords Laborales
+            cursor.execute("UPDATE record_laboral SET activo = 1, fecha_eliminacion = NULL WHERE activo = 0")
+            # Restaurar Legajos
+            cursor.execute("UPDATE documentos SET activo = 1, fecha_eliminacion = NULL WHERE activo = 0")
+            conn.commit()
+            return True
+        except Exception as e:
+            conn.rollback()
+            return False
+        finally:
+            cursor.close()
+
+    def empty_recycle_bin(self):
+        """Elimina permanentemente todos los registros inactivos (Vaciar Papelera)."""
+        conn = get_db_write()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("DELETE FROM record_laboral WHERE activo = 0")
+            cursor.execute("DELETE FROM documentos WHERE activo = 0")
+            conn.commit()
+            return True
+        except Exception as e:
+            conn.rollback()
+            return False
+        finally:
+            cursor.close()
+
+# OPCIONAL: Verifica que get_records_by_personal no oculte datos
+# Si un trabajador cesa, su historial debe seguir siendo visible
+def get_records_by_personal(self, id_personal):
+    """Trae el historial. Asegúrate de que 'activo=1' se refiera al registro y no a la persona."""
+    conn = get_db_read()
+    cursor = conn.cursor()
+    try:
+        query = "SELECT * FROM record_laboral WHERE id_personal = ? AND activo = 1 ORDER BY anio DESC, mes DESC"
+        cursor.execute(query, (id_personal,))
+        return [_row_to_dict(cursor, row) for row in cursor.fetchall()]
+    finally:
+        cursor.close()
 
 
 # Implementación completa y corregida del repositorio de auditoría.

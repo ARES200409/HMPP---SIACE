@@ -1,12 +1,16 @@
-from flask import Blueprint, render_template, request, current_app, flash, redirect, url_for, send_file, jsonify
+from flask import Blueprint, render_template, request, current_app, flash, redirect, url_for, send_file, jsonify, abort
 from flask_login import login_required, current_user
 from app.decorators import role_required
 from app.application.forms import UserManagementForm
 import io
-from datetime import datetime
+from datetime import datetime, timedelta
 
-# Importamos el repositorio para los errores y backups
-from app.infrastructure.persistence.sqlserver_repository import SqlServerBackupRepository
+# CORRECCIÓN DEFINITIVA DE LA BASE DE DATOS
+# Importamos la conexión desde la ruta real que vimos en estructura_repository.py
+from app.database.connector import get_db_write as db 
+
+# Importamos los repositorios necesarios
+from app.infrastructure.persistence.sqlserver_repository import SqlServerBackupRepository, SqlServerPersonalRepository
 
 sistemas_bp = Blueprint('sistemas', __name__) 
 
@@ -41,6 +45,12 @@ def auditoria():
 def gestionar_usuarios():
     usuario_service = current_app.config['USUARIO_SERVICE']
     usuarios = usuario_service.get_all_users_with_roles() 
+    
+    # Ajuste para que '15:32' baje a '12:32' (Hora Real Pasco)
+    for user in usuarios:
+        if hasattr(user, 'last_login') and user.last_login:
+            user.last_login = user.last_login - timedelta(hours=5)
+            
     return render_template('sistemas/gestionar_usuarios.html', usuarios=usuarios)
 
 
@@ -162,6 +172,26 @@ def reset_password(user_id):
         current_app.logger.error(f"Error al resetear contraseña del usuario {user_id}: {e}")
         flash('Ocurrió un error técnico al resetear la contraseña.', 'danger')
     return redirect(url_for('sistemas.gestionar_usuarios'))
+
+
+
+@sistemas_bp.route('/usuarios/cambiar_estado/<int:personal_id>', methods=['POST'])
+@login_required
+# Acceso total para los tres roles institucionales
+@role_required('Sistemas', 'RRHH', 'AdministradorLegajos')
+def cambiar_estado_desde_sistemas(personal_id):
+    data = request.get_json()
+    nuevo_estado = data.get('estado')
+
+    try:
+        conn = db() # get_db_write as db
+        cursor = conn.cursor()
+        # Sincronización por ID (evita fallos de DNI)
+        cursor.execute("EXEC sp_cambiar_estado_laboral ?, ?", (personal_id, nuevo_estado))
+        conn.commit()
+        return jsonify({'success': True, 'message': 'Sincronización completada.'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 
 # ------------------------------------------------------------------------
@@ -381,3 +411,36 @@ def documentos_eliminados_diagnostico():
         results['status'] = 'error'
         results['error'] = str(e)
     return jsonify(results)
+
+# app/presentation/routes/sistemas_routes.py
+
+@sistemas_bp.route('/documentos/eliminados/restaurar-todo', methods=['POST'])
+@login_required
+def restaurar_todo():
+    """Restaura todos los archivos de la papelera unificada de la HMPP."""
+    if current_user.id_rol != 1: 
+        return abort(403)
+        
+    repo = SqlServerPersonalRepository()
+    if repo.recover_all_documents():
+        flash("Se han restaurado todos los documentos exitosamente.", "success")
+    else:
+        flash("Hubo un error al intentar restaurar los documentos.", "danger")
+        
+    # Asegúrate de que el endpoint sea el correcto (probablemente 'sistemas.get_deleted_documents')
+    return redirect(url_for('sistemas.documentos_eliminados')) # CORREGIDO
+
+@sistemas_bp.route('/documentos/eliminados/vaciar', methods=['POST'])
+@login_required
+def vaciar_papelera():
+    """Elimina permanentemente todos los archivos de la papelera."""
+    if current_user.id_rol != 1:
+        return abort(403)
+        
+    repo = SqlServerPersonalRepository()
+    if repo.empty_recycle_bin():
+        flash("La papelera ha sido vaciada permanentemente.", "info")
+    else:
+        flash("Error al intentar vaciar la papelera.", "danger")
+        
+    return redirect(url_for('sistemas.documentos_eliminados')) # CORREGIDO

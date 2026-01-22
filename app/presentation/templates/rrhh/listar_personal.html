@@ -1,48 +1,43 @@
 {% extends 'layouts/dashboard.html' %}
 {% from "components/_form_helpers.html" import render_field %}
-{% block title %}Consulta de Legajos - RRHH{% endblock %}
+{% block title %}Gestión de Legajos - HMPP{% endblock %}
 
 {% block dashboard_content %}
-
-
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1 class="h3 mb-0 text-primary">
-            <i class="bi bi-people-fill me-2"></i>Consulta de Legajos - Recursos Humanos
+            <i class="bi bi-people-fill me-2"></i>Gestión de Legajos - HMPP Pasco
         </h1>
-        <span class="badge bg-info text-dark fs-6 px-3 py-2">
-            Modo: SOLO LECTURA
-        </span>
+        <span class="badge bg-primary px-3 py-2">Módulo: Recursos Humanos</span>
     </div>
 
-    <div class="alert alert-info shadow-sm">
-        <i class="bi bi-info-circle me-2"></i>
-        Puede buscar empleados y consultar sus legajos. No tiene permisos para crear, editar o eliminar registros.
+    <div class="alert alert-primary shadow-sm border-0">
+        <i class="bi bi-info-circle-fill me-2"></i>
+        Panel de gestión habilitado. Ahora puede <strong>activar o desactivar</strong> el estado laboral del personal.
     </div>
 
-    <div class="card shadow-sm mb-4">
+    <div class="card shadow-sm border-0 mb-4">
         <div class="card-body">
             <h5 class="card-title mb-3"><i class="bi bi-funnel-fill me-2"></i>Filtros de Búsqueda</h5>
             <form method="GET" class="row g-3 align-items-end">
                 <div class="col-md-5">
-                    {{ form.dni.label(class="form-label") }}
-                    {{ form.dni(class="form-control" , placeholder="Buscar por DNI") }}
+                    {{ form.dni.label(class="form-label fw-bold") }}
+                    {{ form.dni(class="form-control" , placeholder="Ingresar DNI") }}
                 </div>
                 <div class="col-md-5">
-                    {{ form.nombres.label(class="form-label") }}
+                    {{ form.nombres.label(class="form-label fw-bold") }}
                     {{ form.nombres(class="form-control", placeholder="Buscar por nombre o apellidos") }}
                 </div>
                 <div class="col-md-2 d-grid">
-                    <button type="submit" class="btn btn-primary">Buscar</button>
-                    <a href="{{ url_for('rrhh.listar_personal') }}" class="btn btn-secondary mt-2">Limpiar</a>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-search me-1"></i> Buscar
+                    </button>
+                    <a href="{{ url_for('rrhh.listar_personal') }}" class="btn btn-outline-secondary mt-2">Limpiar</a>
                 </div>
             </form>
         </div>
     </div>
 
-    <div class="card shadow-sm">
-        <div class="card-header bg-light">
-            <strong>Resultados de la Búsqueda</strong>
-        </div>
+    <div class="card shadow-sm border-0">
         <div class="card-body">
             <div class="table-responsive">
                 <table class="table table-hover align-middle">
@@ -51,45 +46,67 @@
                             <th>DNI</th>
                             <th>Apellidos y Nombres</th>
                             <th>Unidad Administrativa</th>
-                            <th>Estado</th>
-                            <th class="text-center">Ver</th>
+                            <th class="text-center">Estado Laboral</th>
+                            <th class="text-center">Acciones</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for persona in pagination.items %}
                         <tr>
-                            <td>{{ persona.dni }}</td>
+                            <td class="fw-bold">{{ persona.dni }}</td>
                             <td>
                                 {{ persona.apellidos }}, {{ persona.nombres }}
                                 {% set status = document_status.get(persona.id_personal) %}
                                 {% if status %}
                                     {% if status.expired > 0 %}
-                                        <span class="badge bg-danger ms-2" title="{{ status.expired }} documento(s) vencido(s)">Vencido</span>
+                                        <span class="badge bg-danger ms-2">Vencido</span>
                                     {% elif status.expiring_soon > 0 %}
-                                        <span class="badge bg-warning text-dark ms-2" title="{{ status.expiring_soon }} documento(s) por vencer">Por Vencer</span>
+                                        <span class="badge bg-warning text-dark ms-2">Por Vencer</span>
                                     {% endif %}
                                 {% endif %}
                             </td>
                             <td>{{ persona.unidad_administrativa or 'N/A' }}</td>
-                            <td>
+                            
+                            <td class="text-center">
                                 {% if persona.activo %}
                                     <span class="badge bg-success">Activo</span>
+                                    <button class="btn btn-sm btn-link text-danger p-0 ms-1 btn-cambiar-estado" 
+                                            data-id="{{ persona.id_personal }}" 
+                                            data-estado="0" 
+                                            data-nombre="{{ persona.apellidos }}"
+                                            title="Desactivar trabajador">
+                                        <i class="bi bi-toggle-on fs-4"></i>
+                                    </button>
                                 {% else %}
-                                    <span class="badge bg-secondary">Inactivo</span>
+                                    <span class="badge bg-secondary">Cesado</span>
+                                    <button class="btn btn-sm btn-link text-success p-0 ms-1 btn-cambiar-estado" 
+                                            data-id="{{ persona.id_personal }}" 
+                                            data-estado="1" 
+                                            data-nombre="{{ persona.apellidos }}"
+                                            title="Activar trabajador">
+                                        <i class="bi bi-toggle-off fs-4"></i>
+                                    </button>
                                 {% endif %}
                             </td>
+
                             <td class="text-center">
-                                <a href="{{ url_for('rrhh.ver_legajo', personal_id=persona.id_personal) }}" 
-                                   class="btn btn-sm btn-outline-primary" 
-                                   title="Ver Legajo">
-                                   <i class="bi bi-eye"></i>
-                                </a>
+                                <div class="btn-group">
+                                    <a href="{{ url_for('rrhh.ver_legajo', personal_id=persona.id_personal) }}" 
+                                       class="btn btn-sm btn-outline-primary" title="Ver Legajo">
+                                        <i class="bi bi-eye"></i>
+                                    </a>
+                                    <a href="{{ url_for('record_laboral.registrar_record', id_personal=persona.id_personal) }}" 
+                                       class="btn btn-sm btn-outline-success" title="Registrar Pago">
+                                        <i class="bi bi-currency-dollar"></i>
+                                    </a>
+                                </div>
                             </td>
                         </tr>
                         {% else %}
                         <tr>
-                            <td colspan="5" class="text-center text-muted">
-                                <i class="bi bi-search"></i> No se encontraron registros que coincidan con la búsqueda.
+                            <td colspan="5" class="text-center py-5 text-muted">
+                                <i class="bi bi-search fs-2 d-block mb-2"></i>
+                                No se encontraron registros coincidentes.
                             </td>
                         </tr>
                         {% endfor %}
@@ -97,35 +114,34 @@
                 </table>
             </div>
 
-            {#Este es el boton de expotar la lista de personal a Excel, simula reporte#}
-            <div class="mb-3">
-                <a href="{{ url_for('rrhh.exportar_empleados_excel') }}" class="btn btn-success">
+            <div class="d-flex justify-content-between align-items-center mt-3">
+                <a href="{{ url_for('rrhh.exportar_empleados_excel') }}" class="btn btn-success btn-sm shadow-sm">
                     <i class="bi bi-file-earmark-excel-fill me-1"></i> Exportar a Excel
                 </a>
+                
+                {% if pagination and pagination.pages > 1 %}
+                <nav>
+                    <ul class="pagination pagination-sm mb-0">
+                        <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+                            <a class="page-link" href="{{ url_for('rrhh.listar_personal', page=pagination.prev_num, **request.args) }}">Ant.</a>
+                        </li>
+                        <li class="page-item active"><span class="page-link">{{ pagination.page }} de {{ pagination.pages }}</span></li>
+                        <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+                            <a class="page-link" href="{{ url_for('rrhh.listar_personal', page=pagination.next_num, **request.args) }}">Sig.</a>
+                        </li>
+                    </ul>
+                </nav>
+                {% endif %}
             </div>
-
-
-            {% if pagination and pagination.pages > 1 %}
-            <nav class="mt-4">
-                <ul class="pagination justify-content-center">
-                    <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
-                        <a class="page-link" href="{{ url_for('rrhh.listar_personal', page=pagination.prev_num, **request.args) }}">Anterior</a>
-                    </li>
-                    {% for page_num in pagination.iter_pages() %}
-                        {% if page_num %}
-                            <li class="page-item {% if page_num == pagination.page %}active{% endif %}">
-                                <a class="page-link" href="{{ url_for('rrhh.listar_personal', page=page_num, **request.args) }}">{{ page_num }}</a>
-                            </li>
-                        {% else %}
-                            <li class="page-item disabled"><span class="page-link">…</span></li>
-                        {% endif %}
-                    {% endfor %}
-                    <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
-                        <a class="page-link" href="{{ url_for('rrhh.listar_personal', page=pagination.next_num, **request.args) }}">Siguiente</a>
-                    </li>
-                </ul>
-            </nav>
-            {% endif %}
         </div>
     </div>
+    
+    <input type="hidden" id="csrf_token" value="{{ csrf_token() }}">
+{% endblock %}
+
+
+{% block scripts %}
+    {{ super() }}
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="{{ url_for('static', filename='js/gestion_personal.js') }}"></script>
 {% endblock %}

@@ -35,6 +35,7 @@ from .infrastructure.persistence.sqlserver_repository import (
     SqlServerSolicitudRepository 
 )
 
+
 # Inicialización de extensiones de Flask (sin la app)
 login_manager = LoginManager()
 login_manager.login_view = 'auth.login'
@@ -141,6 +142,9 @@ def create_app():
         content_security_policy_nonce_in=['script-src'],
         permissions_policy={},  # Ignorar browsing-topics de forma segura
     )
+    from app.presentation.routes.record_laboral_routes import record_laboral_bp
+    app.register_blueprint(record_laboral_bp)
+    
 
     # --- FILTRO DE PLANTILLA PARA ZONA HORARIA ---
     # Se define un filtro personalizado para Jinja2.

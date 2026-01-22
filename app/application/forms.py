@@ -181,14 +181,24 @@ class PersonalForm(FlaskForm):
     #         raise ValidationError('Debe seleccionar una unidad administrativa válida.')
 
 class DocumentoForm(FlaskForm):
-    id_seccion = SelectField('Sección del Legajo', coerce=int, validators=[NumberRange(min=1, message="Debe seleccionar una sección.")])
-    id_tipo = SelectField('Tipo de Documento', coerce=int, validators=[NumberRange(min=1, message="Debe seleccionar un tipo de documento.")])
-    descripcion = TextAreaField('Descripción (Opcional)', validators=[Optional(), Length(max=500)])
-    fecha_emision = DateField('Fecha de Emisión', format='%Y-%m-%d', validators=[Optional()],
-                              description='Fecha del documento. Si no se especifica, se usará la fecha de hoy.')
+    # Listas dinámicas que se llenan en la ruta
+    id_seccion = SelectField('Sección del Legajo', coerce=int, choices=[], validators=[Optional()])
+    id_tipo = SelectField('Tipo de Documento', coerce=int, choices=[], validators=[Optional()])
+    
+    # Campo para Legajos Generales (DNI, Capacitaciones, etc.)
+    descripcion = StringField('Descripción', validators=[Optional()])
+    
+    # Campo para Récord Laboral
+    numero_documento = StringField('Número de Documento', validators=[Optional(), Length(max=100)])
+    
+    # Observación detallada (TextArea)
+    observacion = TextAreaField('Descripción / Observación', validators=[Optional(), Length(max=500)])
+    
+    fecha_emision = DateField('Fecha de Emisión', format='%Y-%m-%d', validators=[Optional()])
+    
     archivo = FileField('Seleccionar Archivo', validators=[
         DataRequired(message="Debe seleccionar un archivo."),
-        FileAllowed(['pdf', 'png', 'jpg', 'jpeg', 'docx', 'xlsx'], '¡Solo se permiten archivos PDF, de imagen (PNG, JPG) o de Office (DOCX, XLSX)!')
+        FileAllowed(['pdf', 'png', 'jpg', 'jpeg', 'docx', 'xlsx'], 'Formato no permitido')
     ])
     submit = SubmitField('Subir Documento')
 

@@ -46,7 +46,7 @@
             {% if not personal.activo %}
                 <div class="alert alert-secondary border-0 mb-3 py-2 shadow-sm">
                     <i class="bi bi-exclamation-octagon-fill me-2"></i>
-                    <strong>Modo de Solo Consulta:</strong> No se pueden registrar nuevos pagos a un trabajador cesado.
+                    <strong>Modo de Solo Consulta:</strong> No se pueden registrar nuevos documentos a un trabajador cesado.
                 </div>
             {% endif %}
 
@@ -104,18 +104,32 @@
                         {% for doc in documentos %}
                         <tr class="{% if not personal.activo %}text-muted{% endif %}">
                             <td class="text-center">
-                                <span class="fw-bold">{{ "%02d" | format(doc.dia or 0) }}/{{ "%02d" | format(doc.mes or 0) }}/{{ doc.anio or '----' }}</span>
-                                <br><small class="text-muted"><i class="bi bi-clock"></i> {{ doc.hora or '--:--:--' }}</small>
+                                <div class="fw-bold text-primary">
+                                    {{ doc.fecha_registro.strftime('%d/%m/%Y') if doc.fecha_registro else '00/00/----' }}
+                                </div>
+                                <small class="text-muted">
+                                    <i class="bi bi-clock"></i> {{ doc.fecha_registro.strftime('%H:%M:%S') if doc.fecha_registro else '--:--:--' }}
+                                </small>
                             </td>
                             <td>
-                                <i class="bi bi-file-earmark-spreadsheet-fill {% if personal.activo %}text-success{% else %}text-secondary{% endif %} me-1"></i> 
-                                {{ doc.nombre_archivo }}
+                                {% if doc.nombre_archivo %}
+                                    {% if '.pdf' in doc.nombre_archivo.lower() %}
+                                        <i class="bi bi-file-earmark-pdf-fill text-danger me-1"></i>
+                                    {% else %}
+                                        <i class="bi bi-file-earmark-spreadsheet-fill text-success me-1"></i>
+                                    {% endif %}
+                                    {{ doc.nombre_archivo }}
+                                {% else %}
+                                    <span class="text-muted">Sin archivo</span>
+                                {% endif %}
                             </td>
                             <td>{{ doc.descripcion or 'Sin descripción' }}</td>
                             <td class="text-center">
-                                {% if doc.fecha_inicio and doc.fecha_fin_vencimiento %}
-                                    {{ doc.fecha_inicio.strftime('%d/%m/%Y') }} al 
-                                    <strong>{{ doc.fecha_fin_vencimiento.strftime('%d/%m/%Y') }}</strong>
+                                {% if doc.fecha_inicio %}
+                                    {{ doc.fecha_inicio.strftime('%d/%m/%Y') }}
+                                    {% if doc.fecha_fin_vencimiento %}
+                                         al <strong>{{ doc.fecha_fin_vencimiento.strftime('%d/%m/%Y') }}</strong>
+                                    {% endif %}
                                 {% else %}
                                     <span class="text-muted">No especificado</span>
                                 {% endif %}
@@ -142,7 +156,7 @@
 
                                     {% if personal.activo %}
                                     <form action="{{ url_for('record_laboral.eliminar_record', id_record=doc.id_record, id_personal=personal.id_personal) }}" 
-                                          method="POST" onsubmit="return confirm('¿Eliminar este registro de pago?');" class="m-0">
+                                          method="POST" onsubmit="return confirm('¿Eliminar este registro?');" class="m-0">
                                         {{ form.csrf_token }} 
                                         <button type="submit" class="btn btn-sm btn-outline-danger" title="Eliminar">
                                             <i class="bi bi-trash-fill"></i>
@@ -155,7 +169,7 @@
                         {% endfor %}
                     {% else %}
                         <tr>
-                            <td colspan="6" class="text-center py-4 text-muted">No hay registros detallados.</td>
+                            <td colspan="6" class="text-center py-4 text-muted">No hay registros detallados en el legajo digital.</td>
                         </tr>
                     {% endif %}
                 </tbody>

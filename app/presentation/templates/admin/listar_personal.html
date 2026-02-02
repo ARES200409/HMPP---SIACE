@@ -3,15 +3,16 @@
 {% block title %}Gestión de Legajos{% endblock %}
 
 {% block dashboard_content %}
-    <!-- Breadcrumb -->
-    <nav aria-label="breadcrumb" class="mb-4">
+    
+<nav aria-label="breadcrumb" class="mb-4">
         <ol class="breadcrumb">
             <li class="breadcrumb-item"><a href="{{ url_for('legajo.listar_personal') }}">Inicio</a></li>
             <li class="breadcrumb-item active" aria-current="page">Gestión de Legajos</li>
         </ol>
     </nav>
 
-    <!-- Header con Acciones -->
+
+
     <div class="page-header mb-4">
         <div class="row align-items-center">
             <div class="col">
@@ -36,7 +37,7 @@
         </div>
     </div>
 
-    <!-- Filtros de Búsqueda -->
+
     <div class="card mb-4">
         <div class="card-header">
             <i class="bi bi-funnel"></i> Filtros de Búsqueda
@@ -86,7 +87,17 @@
                         {% for persona in pagination.items %}
                         <tr>
                             <td>{{ persona.dni }}</td>
-                            <td>{{ persona.apellidos }}, {{ persona.nombres }}</td>
+                            <td>
+                                {{ persona.apellidos }}, {{ persona.nombres }}
+                                {% set status = document_status.get(persona.id_personal) %}
+                                {% if status %}
+                                    {% if status.expired > 0 %}
+                                        <span class="badge bg-danger ms-2" title="{{ status.expired }} documento(s) vencido(s)">Vencido</span>
+                                    {% elif status.expiring_soon > 0 %}
+                                        <span class="badge bg-warning text-dark ms-2" title="{{ status.expiring_soon }} documento(s) por vencer">Por Vencer</span>
+                                    {% endif %}
+                                {% endif %}
+                            </td>
                             <td>{{ persona.unidad_administrativa or 'N/A' }}</td>
                             <td>
                                 {% if persona.activo %}
@@ -112,24 +123,6 @@
                             </td>
                         </tr>
                         {% else %}
-                                                {% for persona in pagination.items %}
-                        <tr>
-                            <td>{{ persona.dni }}</td>
-                            <td>
-                                {{ persona.apellidos }}, {{ persona.nombres }}
-                                {% set status = document_status.get(persona.id_personal) %}
-                                {% if status %}
-                                    {% if status.expired > 0 %}
-                                        <span class="badge bg-danger ms-2" title="{{ status.expired }} documento(s) vencido(s)">Vencido</span>
-                                    {% elif status.expiring_soon > 0 %}
-                                        <span class="badge bg-warning text-dark ms-2" title="{{ status.expiring_soon }} documento(s) por vencer">Por Vencer</span>
-                                    {% endif %}
-                                {% endif %}
-                                </td>
-                            <td>{{ persona.unidad_administrativa }}</td>
-                            </tr>
-                        {% endfor %}
-
                         <tr>
                             <td colspan="5" class="text-center">No se encontraron registros que coincidan con la búsqueda.</td>
                         </tr>
@@ -137,23 +130,27 @@
                     </tbody>
                 </table>
             </div>
+
             {% if pagination and pagination.pages > 1 %}
             <nav class="mt-4">
                 <ul class="pagination justify-content-center">
                     <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
-                        <a class="page-link" href="{{ url_for('legajo.listar_personal', page=pagination.prev_num, **request.args) }}">Anterior</a>
+                        {# Pasamos los filtros explícitamente para evitar duplicar el argumento 'page' #}
+                        <a class="page-link" href="{{ url_for('legajo.listar_personal', page=pagination.prev_num, dni=form.dni.data, nombres=form.nombres.data) }}">Anterior</a>
                     </li>
+
                     {% for page_num in pagination.iter_pages() %}
                         {% if page_num %}
                             <li class="page-item {% if page_num == pagination.page %}active{% endif %}">
-                                <a class="page-link" href="{{ url_for('legajo.listar_personal', page=page_num, **request.args) }}">{{ page_num }}</a>
+                                <a class="page-link" href="{{ url_for('legajo.listar_personal', page=page_num, dni=form.dni.data, nombres=form.nombres.data) }}">{{ page_num }}</a>
                             </li>
                         {% else %}
                             <li class="page-item disabled"><span class="page-link">…</span></li>
                         {% endif %}
                     {% endfor %}
+
                     <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
-                        <a class="page-link" href="{{ url_for('legajo.listar_personal', page=pagination.next_num, **request.args) }}">Siguiente</a>
+                        <a class="page-link" href="{{ url_for('legajo.listar_personal', page=pagination.next_num, dni=form.dni.data, nombres=form.nombres.data) }}">Siguiente</a>
                     </li>
                 </ul>
             </nav>
@@ -161,7 +158,7 @@
         </div>
     </div>
 
-    <!-- Modal de Confirmación de Desactivación -->
+
     <div class="modal fade" id="confirmDeactivateModal" tabindex="-1" data-url-template="{{ url_for('legajo.eliminar_personal', personal_id=0) }}">
       <div class="modal-dialog">
         <div class="modal-content">

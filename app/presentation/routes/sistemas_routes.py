@@ -4,6 +4,8 @@ from app.decorators import role_required
 from app.application.forms import UserManagementForm
 import io
 from datetime import datetime, timedelta
+from app.infrastructure.persistence.error_repository import ErrorRepository 
+
 
 # CORRECCIÓN DEFINITIVA DE LA BASE DE DATOS
 # Importamos la conexión desde la ruta real que vimos en estructura_repository.py
@@ -59,6 +61,8 @@ def gestionar_usuarios():
 @role_required('Sistemas')
 def crear_usuario():
     form = UserManagementForm() 
+    
+    # Carga de roles para el selector del formulario
     try:
         repo = current_app.config['USUARIO_REPOSITORY']
         roles = repo.get_all_roles()
@@ -67,33 +71,51 @@ def crear_usuario():
         current_app.logger.warning(f"Error al cargar roles: {e}")
     
     if form.validate_on_submit():
+        # --- VALIDACIONES DE SEGURIDAD ---
         if not form.username.data or not form.username.data.strip():
             form.username.errors = ('El nombre de usuario es requerido.',)
             return render_template('sistemas/crear_usuario.html', form=form)
+        
         if not form.email.data or not form.email.data.strip():
             form.email.errors = ('El correo electrónico es requerido.',)
             return render_template('sistemas/crear_usuario.html', form=form)
-        if not form.password.data or not form.password.data.strip():
-            form.password.errors = ('La contraseña es requerida.',)
-            return render_template('sistemas/crear_usuario.html', form=form)
+            
         if not form.id_rol.data or form.id_rol.data == 0:
             form.id_rol.errors = ('Debe seleccionar un rol.',)
             return render_template('sistemas/crear_usuario.html', form=form)
-        
+
         try:
             usuario_service = current_app.config['USUARIO_SERVICE']
-            mensaje, tipo = usuario_service.create_user(form.data)
+            
+            # 1. PREPARACIÓN DE DATOS (Diccionario editable)
+            # Extraemos los datos del formulario para poder manipularlos antes de guardar
+            datos_usuario = form.data.copy()
+            
+            # 2. TRANSFORMACIÓN A MINÚSCULAS
+            # Aseguramos que el usuario se guarde como 'junior_1' y no 'Junior_1'
+            datos_usuario['username'] = datos_usuario['username'].lower().strip()
+            
+            # 3. VERIFICACIÓN DE NOMBRE COMPLETO
+            # 'nombre_completo' ya viaja en datos_usuario porque lo añadimos al Form
+            if not datos_usuario.get('nombre_completo'):
+                current_app.logger.warning("Intento de crear usuario sin nombre completo.")
+
+            # 4. EJECUCIÓN DEL SERVICIO
+            # Pasamos el diccionario procesado al servicio de la municipalidad
+            mensaje, tipo = usuario_service.create_user(datos_usuario)
+            
             flash(mensaje, tipo)
             
-            # Si la creación fue exitosa, redirigir a la lista de usuarios
             if tipo == 'success':
+                # Redirección exitosa al panel de gestión
                 return redirect(url_for('sistemas.gestionar_usuarios'))
-            # Si no fue exitosa (warning/danger), mantener el formulario
             else:
                 return render_template('sistemas/crear_usuario.html', form=form)
+
         except Exception as e:
-            current_app.logger.error(f"Error al crear usuario: {str(e)}")
+            current_app.logger.error(f"Error crítico al crear usuario: {str(e)}")
             flash(f'Error al crear usuario: {str(e)}', 'danger')
+
     return render_template('sistemas/crear_usuario.html', form=form)
 
 
@@ -242,34 +264,47 @@ def estado_servidor():
     
     return render_template('sistemas/estado_servidor.html', **metrics)
 
+
 @sistemas_bp.route('/errores')
 @login_required
-@role_required('Sistemas')
+@role_required('Sistemas') # Mantenlo si ya tienes el decorador funcionando
 def errores():
+    """
+    Carga el historial real de fallos técnicos desde la instancia OSCAR.
+    """
     try:
-        repo = SqlServerBackupRepository()
-        lista_de_errores = repo.obtener_historial_errores()
+        # 🚀 Usamos el repositorio específico de errores para obtener los datos REALES
+        repo = ErrorRepository() 
+        lista_de_errores = repo.obtener_todos() # Este método debe devolver archivo, linea, etc.
+        
         return render_template('sistemas/registro_errores.html', errores=lista_de_errores)
+    
     except Exception as e:
-        current_app.logger.error(f"No se pudo cargar el historial de errores: {e}")
-        flash(f"No se pudo cargar el historial de errores: {e}", "danger")
+        # Si algo falla al cargar la lista, usamos el logger de Flask
+        current_app.logger.error(f"Error al cargar bitácora de fallos: {e}")
+        flash("No se pudo conectar con la tabla de errores en SQL Server.", "danger")
         return render_template('sistemas/registro_errores.html', errores=[])
 
 @sistemas_bp.route('/test-error')
 @login_required
 @role_required('Sistemas')
 def generar_error_prueba():
-    repo = SqlServerBackupRepository()
+    """
+    Ruta de prueba profesional: Forza un error y usa el Handler Automático.
+    """
     try:
-        resultado = 1 / 0
+        # 🚀 Provocamos el error de división por cero
+        error_forzado = 10 / 0 
+        
     except Exception as e:
-        usuario_id = current_user.id if current_user.is_authenticated else None
-        repo.registrar_error(
-            modulo='sistemas.test_error', 
-            descripcion=f"Error de prueba forzado: {str(e)}", 
-            usuario_id=usuario_id
-        )
-        flash('Se ha generado y registrado un error de prueba en la bitácora.', 'info')
+        # 🚀 LLAMADA CLAVE: Usamos tu nueva utilidad automática
+        # Esto guardará: Archivo, Línea, Stacktrace y Usuario sin que tú escribas nada más.
+        from app.utils.error_handler import registrar_error_automatico
+        registrar_error_automatico(e)
+        
+        flash('¡Éxito! El error de prueba fue capturado y registrado con su ADN técnico.', 'success')
+    
+    # Redirigimos de vuelta para ver el nuevo registro en la tabla
     return redirect(url_for('sistemas.errores'))
 
 

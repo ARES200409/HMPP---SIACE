@@ -3,7 +3,7 @@ from flask_login import current_user, login_required
 from app.decorators import role_required
 from datetime import datetime
 from app.application.forms import FiltroPersonalForm, DocumentoForm
-
+from app.application.forms import ContratoInicialForm
 # CORRECCIÓN VITAL: Importamos 'db' que es el alias de get_db_write definido en __init__.py
 from app.database import db
 
@@ -26,16 +26,23 @@ def listar_personal():
     page = request.args.get('page', 1, type=int)
     filters = {'dni': form.dni.data, 'nombres': form.nombres.data}
 
-    legajo_service = current_app.config['LEGAJO_SERVICE']
-    pagination = legajo_service.get_all_personal_paginated(page, 15, filters)
-    document_status = legajo_service.check_document_status_for_all_personal()
+    try:
+        legajo_service = current_app.config['LEGAJO_SERVICE']
+        pagination = legajo_service.get_all_personal_paginated(page, 15, filters)
+        document_status = legajo_service.check_document_status_for_all_personal()
 
-    return render_template(
-        'rrhh/listar_personal.html',
-        form=form,
-        pagination=pagination,
-        document_status=document_status
-    )
+        return render_template(
+            'rrhh/listar_personal.html',
+            form=form,
+            pagination=pagination,
+            document_status=document_status
+        )
+    except Exception as e:
+        # ❌ NUNCA HAGAS: return e
+        # ✅ HAZ ESTO:
+        current_app.logger.error(f"Error en lista: {str(e)}")
+        flash(f"Error al cargar la lista: {str(e)}", "danger")
+        return redirect(url_for('rrhh.inicio_rrhh')) # Te manda al inicio en lugar de romper la app
 
 @rrhh_bp.route('/personal/<int:personal_id>')
 @login_required
@@ -127,3 +134,68 @@ def cambiar_estado_laboral(personal_id):
     except Exception as e:
         current_app.logger.error(f"Error al cambiar estado: {e}")
         return jsonify({'success': False, 'message': str(e)}), 500
+    
+
+# app/presentation/routes/rrhh_routes.py
+
+@rrhh_bp.route('/contrataciones/nuevo/<int:personal_id>', methods=['GET', 'POST'])
+@login_required
+@role_required('RRHH')
+def ingresar_contratacion(personal_id):
+    """
+    Gestiona el registro de contratación inicial capturando obligatoriamente 
+    el archivo PDF de la resolución.
+    """
+    from werkzeug.utils import secure_filename # 🚀 Importante para nombres de archivo seguros
+    
+    legajo_service = current_app.config['LEGAJO_SERVICE']
+    repo = legajo_service._personal_repo
+    
+    # 1. Buscar al trabajador
+    persona = repo.find_by_id(personal_id)
+    if not persona:
+        flash("Error: El trabajador no existe en el sistema.", "danger")
+        return redirect(url_for('rrhh.listar_personal'))
+
+    form = ContratoInicialForm()
+    
+    # 2. Carga dinámica de opciones para los selectores
+    form.id_tipo_contrato.choices = [('', '-- Seleccione Tipo --')] + repo.get_tipos_contrato_for_select()
+    form.id_cargo.choices = [('', '-- Seleccione Puesto --')] + repo.get_cargos_for_select()
+    form.id_unidad.choices = [('', '-- Seleccione Unidad --')] + repo.get_unidades_for_select()
+
+    # 3. Pre-cargar la unidad actual si el trabajador ya tiene una asignada
+    if request.method == 'GET':
+        if hasattr(persona, 'id_unidad') and persona.id_unidad:
+            form.id_unidad.data = str(persona.id_unidad)
+
+    # 4. Procesar el Formulario (POST)
+    if form.validate_on_submit():
+        # 🛡️ CAPTURA DEL PDF: Buscamos el archivo enviado desde el HTML
+        archivo = request.files.get('archivo_resolucion')
+        
+        if not archivo or archivo.filename == '':
+            flash("La Resolución en formato PDF es obligatoria para activar el contrato.", "warning")
+        else:
+            try:
+                # A. Procesar el archivo
+                filename = secure_filename(archivo.filename)
+                file_bytes = archivo.read()
+
+                # B. Preparar el diccionario de datos
+                data = form.data
+                data['id_personal'] = personal_id # Sincronizamos con el nombre que espera el repo
+
+                # C. Llamar al repositorio con los 3 PARÁMETROS requeridos
+                if repo.registrar_contrato_inicial(data, file_bytes, filename):
+                    flash(f'¡Éxito! Contratación de {persona.nombres} registrada y legajo digital activado.', 'success')
+                    return redirect(url_for('rrhh.listar_personal'))
+                else:
+                    flash("Error técnico: No se pudo guardar el contrato en SQL Server.", "danger")
+            
+            except Exception as e:
+                flash(f'Error crítico durante el proceso: {str(e)}', 'danger')
+                print(f"DEBUG Error: {str(e)}")
+
+    # 5. Renderizado (Garantiza que no salga pantalla en blanco)
+    return render_template('rrhh/ingresar_contratacion.html', form=form, persona=persona)

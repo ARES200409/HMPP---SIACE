@@ -15,7 +15,6 @@
                 <p>Presione el botón para iniciar una copia de seguridad completa (Full Backup) de inmediato.</p>
                 
                 <form method="POST" action="{{ url_for('sistemas.run_backup') }}">
-                    {# Aseguramos el token CSRF #}
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     
                     <button type="submit" class="btn btn-lg btn-danger w-100" data-disable-on-submit>
@@ -31,23 +30,27 @@
             <div class="card-header">Historial de Backups Recientes</div>
             <div class="card-body">
                 {# Muestra la fecha del último registro del historial, si existe #}
-                <p class="text-muted">Último backup completo: **{{ historial[0].fecha_registro.strftime('%Y-%m-%d %H:%M:%S') if historial and historial[0].fecha_registro else 'N/A' }}** (Último Registro)</p>
+                <p class="text-muted">Último backup completo: **{{ historial[0].fecha_registro.strftime('%Y-%m-%d %H:%M:%S') if historial and historial[0].fecha_registro else 'N/A' }}**</p>
                 
                 <table class="table table-sm table-striped">
                     <thead>
                         <tr><th>Fecha</th><th>Tipo</th><th>Tamaño</th><th>Estado</th></tr>
                     </thead>
                     <tbody>
-                        {# 🔑 Bucle dinámico sobre el historial pasado por Python 🔑 #}
                         {% for item in historial %}
                         <tr>
-                            <td>{{ item.fecha_registro.strftime('%Y-%m-%d %H:%M:%S') }}</td>
-                            {# Asumimos un valor por defecto ya que la bitácora no lo tiene #}
-                            <td>FULL</td> 
-                            <td>5.5 GB</td> 
+                            <td>{{ item.fecha_registro.strftime('%Y-%m-%d %H:%M:%S') if item.fecha_registro else 'Sin fecha' }}</td>
+                            
+                            {# 🚀 El tipo ahora es dinámico (antes era texto fijo 'FULL') #}
+                            <td>{{ item.Tipo if item.Tipo else 'FULL' }}</td> 
+
+                            {# 🚀 ¡LA CORRECCIÓN CLAVE! Ahora muestra el tamaño real calculado en Python #}
+                            <td>{{ item.Tamanio if item.Tamanio else 'N/A' }}</td> 
+                            
                             <td>
-                                {% set estado_clase = 'bg-success' %}
-                                <span class="badge {{ estado_clase }}">Éxito</span>
+                                {# 🚀 El badge cambia de color según el estado real del backup #}
+                                {% set estado_clase = 'bg-success' if item.Estado == 'Éxito' else 'bg-danger' %}
+                                <span class="badge {{ estado_clase }}">{{ item.Estado }}</span>
                             </td>
                         </tr>
                         {% else %}

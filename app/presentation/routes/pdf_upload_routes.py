@@ -245,6 +245,11 @@ def upload_legajo_pdf(personal_id=None):
 
             # Validar que sea un PDF
             if not file.filename.lower().endswith('.pdf'):
+                from app.utils.error_handler import registrar_error_automatico
+                try:
+                    raise ValueError(f"SEGURIDAD PDF: Intento de cargar {file.filename} (No es PDF)")
+                except ValueError as ve:
+                    registrar_error_automatico(ve)
                 flash('Solo se aceptan archivos PDF.', 'danger')
                 return redirect(request.url)
 

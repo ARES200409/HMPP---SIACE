@@ -83,23 +83,27 @@ class LegajoService:
     def register_new_personal(self, form_data, creating_user_id):
         """
         Registra un nuevo empleado y audita la acción.
-        Genera automáticamente usuario con rol Personal.
-        Username y contraseña son el DNI del empleado.
+        Genera automáticamente un usuario con rol 'Personal' (ID 5).
+        Soluciona la inconsistencia de nombres detectada en los logs.
         """
         try:
-            # 1. Crear el personal
+            # 1. Crear el registro en la tabla 'personal'
+            # Se asume que form_data ya contiene DNI, Nombres, Apellidos, Sexo, etc.
             new_personal_id = self._personal_repo.create(form_data)
             
-            # 2. Usar DNI como username y contraseña
+            # 2. Extraer y limpiar datos para el acceso web
             dni = form_data.get('dni', '').strip()
+            nombres = form_data.get('nombres', '').strip()
+            apellidos = form_data.get('apellidos', '').strip()
+
             if not dni:
                 raise ValueError("El DNI es requerido para crear el usuario")
             
-            username = dni
-            password = dni
-            email = form_data.get('email', '')
+            # --- SOLUCIÓN AL ERROR DE LOGS: Unificar el nombre completo ---
+            # Esto evita el error: 'El nombre completo es requerido' en UsuarioService
+            nombre_completo = f"{nombres} {apellidos}"
             
-            # 3. Obtener ID del rol "Personal"
+            # 3. Obtener ID del rol "Personal" (ID 5)
             id_rol_personal = self._get_personal_role_id()
             
             if not id_rol_personal:
@@ -109,15 +113,18 @@ class LegajoService:
             # 4. Crear usuario con los datos generados
             if self._usuario_service:
                 user_data = {
-                    'username': username,
-                    'email': email,
-                    'password': password,
+                    'username': dni,                # El DNI es su nombre de usuario
+                    'nombre_completo': nombre_completo, # <--- ENVIADO PARA EVITAR ERROR
+                    'email': form_data.get('email') or f"{dni}@legajo.hmpp.gob.pe",
+                    'password': dni,                # La contraseña inicial es su DNI
                     'id_rol': id_rol_personal,
-                    'id_personal': new_personal_id  # Asociar con el personal creado
+                    'id_personal': new_personal_id  # Vínculo directo al legajo
                 }
-                # create_user devuelve (mensaje, tipo) -> verificar resultado
+
+                # Llamamos a create_user y verificamos el resultado (mensaje, tipo)
                 result = self._usuario_service.create_user(user_data)
-                # Si la función devuelve tupla (mensaje, tipo)
+                
+                # Manejo del retorno (mensaje, tipo) o objeto string
                 if isinstance(result, tuple) and len(result) >= 2:
                     mensaje, tipo = result[0], result[1]
                 else:
@@ -125,23 +132,20 @@ class LegajoService:
 
                 if tipo != 'success':
                     logger.error(f"Error creando usuario automáticamente: {mensaje}")
-                    # Informar y revertir: lanzar excepción para que el caller lo maneje
+                    # Revertir: Si falla el usuario, lanzamos excepción para que el registro de personal no sea válido
                     raise Exception(f"No se pudo crear el usuario automáticamente: {mensaje}")
 
-                logger.info(f"Usuario '{username}' creado automáticamente para personal ID {new_personal_id} con DNI")
+                logger.info(f"Usuario '{dni}' vinculado exitosamente al personal ID {new_personal_id}")
             else:
-                logger.warning("Usuario service no disponible - no se creó el usuario")
+                logger.warning("UsuarioService no inyectado - El legajo se creó sin cuenta de acceso")
             
-            # 5. Auditar la acción
-            audit_data = form_data.copy()
-            audit_data['username_generado'] = username
-            audit_data['nota'] = f"Usuario creado automáticamente con DNI {dni} como username y contraseña"
+            # 5. Auditar la acción en el sistema
             self._audit_service.log(
                 creating_user_id, 
                 'Personal', 
                 'CREAR', 
-                f"Se creó el legajo para el DNI {form_data['dni']} con usuario {username}", 
-                audit_data
+                f"Se creó el legajo y usuario para {nombre_completo} (DNI: {dni})", 
+                form_data
             )
             
             return new_personal_id
@@ -285,41 +289,20 @@ class LegajoService:
         )
 
     def delete_personal_by_id(self, personal_id, deleting_user_id):
-        """Desactiva un legajo de personal, su usuario asociado (si existe), y audita la acción."""
-        persona = self._personal_repo.find_by_id(personal_id)
-        if not persona:
-            raise ValueError("La persona que intenta eliminar no existe.")
-
-        self._personal_repo.delete_by_id(personal_id)
-        
-        # Si existe un usuario asociado a este personal, desactivarlo también
-        if self._usuario_service:
-            try:
-                # Buscar usuario por DNI o email
-                usuario = self._usuario_service._usuario_repo.find_by_email(persona.email) if hasattr(persona, 'email') and persona.email else None
-                if usuario:
-                    self._usuario_service._usuario_repo.deactivate_user(usuario.id)
-                    self._audit_service.log(
-                        deleting_user_id,
-                        'Usuario',
-                        'DESACTIVAR (Cascada)',
-                        f"Usuario asociado a personal DNI {persona.dni} fue desactivado automáticamente"
-                    )
-            except Exception as e:
-                # Log del error pero no detiene la desactivación del personal
-                self._audit_service.log(
-                    deleting_user_id,
-                    'Usuario',
-                    'ERROR_DESACTIVACION',
-                    f"Error al desactivar usuario de personal DNI {persona.dni}: {str(e)}"
-                )
-        
-        self._audit_service.log(
-            deleting_user_id,
-            'Personal',
-            'ELIMINAR (Desactivar)',
-            f"Se desactivó el legajo del personal con DNI {persona.dni}"
-        )
+        """Orquesta la baja sincronizada y registra la auditoría para RRHH."""
+        try:
+            # Llamamos al repo que ahora hace la doble actualización automáticamente
+            self._personal_repo.delete_by_id(personal_id)
+            
+            # Auditoría integral para los reportes de RRHH
+            self._audit_service.log(
+                deleting_user_id, 'SISTEMA', 'BAJA_TOTAL',
+                f"Se desactivó completamente al personal y su acceso (ID: {personal_id})"
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Fallo en la operación de baja: {e}")
+            raise
 
     def activate_personal_by_id(self, personal_id, activating_user_id):
         """Reactiva un legajo de personal, su usuario asociado (si existe), y audita la acción."""
@@ -373,6 +356,7 @@ class LegajoService:
         Valida cada fila y registra a los nuevos empleados.
         """
         import openpyxl
+        from app.utils.error_handler import registrar_error_automatico
         
         workbook = openpyxl.load_workbook(file_storage)
         sheet = workbook.active
@@ -431,6 +415,7 @@ class LegajoService:
                 registros_exitosos += 1
 
             except Exception as e:
+                registrar_error_automatico(e)
                 registros_fallidos += 1
                 errores.append(f"Fila {row_index}: {e}")
         
@@ -615,6 +600,60 @@ class LegajoService:
             # Si el documento existe y pertenece al usuario actual
             return owner_id is not None and owner_id == user_personal_id
             
+        return False
+
+    # --- MÉTODOS PARA EL PASO 2 (CONTRATOS Y USUARIOS) ---
+
+    def get_usuario_por_username(self, username):
+        """
+        Busca un usuario por su DNI (username) para verificar su cuenta.
+        """
+        try:
+            if self._usuario_service:
+                # Usamos el servicio de usuario inyectado
+                return self._usuario_service.get_usuario_by_username(username)
+            return None
+        except Exception as e:
+            logger.error(f"Error al buscar usuario {username}: {str(e)}")
+            return None
+
+    def crear_contrato_inicial(self, contrato_data):
+        """
+        Registra el primer contrato del trabajador para activar su ficha laboral.
+        Esto llena los campos de 'Cargo' y 'Unidad' en la vista de Mis Datos.
+        """
+        try:
+            # 1. Validaciones básicas
+            if not contrato_data.get('id_personal'):
+                raise ValueError("El ID del personal es obligatorio para el contrato.")
+
+            # 2. Llamada al repositorio para insertar en dbo.contratos
+            # Asegúrate de que tu repo tenga el método add_contract
+            success = self._personal_repo.add_contract(contrato_data)
+            
+            if success:
+                logger.info(f"Contrato inicial creado para personal ID {contrato_data['id_personal']}")
+                return True
+            return False
+            
+        except Exception as e:
+            logger.error(f"Error en crear_contrato_inicial: {str(e)}")
+            raise
+        
+    # 🚀 NUEVOS MÉTODOS PARA EL PASO 2
+    
+    def get_usuario_por_username(self, username):
+        """Busca si el DNI ya tiene un usuario creado para evitar duplicados."""
+        if self._usuario_service:
+            # Buscamos en el repositorio de usuarios inyectado
+            return self._usuario_service._usuario_repo.find_by_username(username)
+        return None
+
+    def crear_usuario_acceso(self, usuario_obj):
+        """Guarda el objeto Usuario en la base de datos."""
+        if self._usuario_service:
+            # Usamos el repositorio de usuarios para persistir el objeto Usuario
+            return self._usuario_service._usuario_repo.save(usuario_obj)
         return False
 
     def search_documents(self, query=None, id_seccion=None, id_tipo=None):

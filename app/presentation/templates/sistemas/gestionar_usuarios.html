@@ -46,7 +46,12 @@
                         <td>{{ user.nombre_completo or 'N/A' }}</td>
                         <td>
                             <span class="badge rounded-pill bg-light text-dark border">
-                                {{ user.rol_nombre }}
+                                {# Traducción visual de rol para la municipalidad #}
+                                {% if user.rol_nombre == 'AdministradorLegajos' %}
+                                    AdministradorEscalafon
+                                {% else %}
+                                    {{ user.rol_nombre }}
+                                {% endif %}
                             </span>
                         </td>
                         <td class="text-muted">

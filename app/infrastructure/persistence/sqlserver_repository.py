@@ -75,7 +75,7 @@ class SqlServerUsuarioRepository(IUsuarioRepository):
                 r.nombre_rol, 
                 u.activo, 
                 u.ultimo_login,
-                COALESCE(p.nombres + ' ' + p.apellidos, 'N/A') AS nombre_completo
+                u.nombre_completo
             FROM 
                 usuarios u
             JOIN 
@@ -101,7 +101,7 @@ class SqlServerUsuarioRepository(IUsuarioRepository):
                         activo=data.get('activo'),
                         email=data.get('email'),
                         nombre_rol=data.get('nombre_rol'),
-                        nombre_completo=data.get('nombre_completo'),
+                        nombre_completo=data.get('nombre_completo') or 'Sin nombre registrado',
                         ultimo_login=data.get('ultimo_login')
                     )
                     # Asignar alias para compatibilidad con la vista
@@ -135,7 +135,8 @@ class SqlServerUsuarioRepository(IUsuarioRepository):
                 u.two_factor_expiry,
                 u.id_personal,
                 u.foto_perfil,
-                r.nombre_rol
+                r.nombre_rol,
+                u.nombre_completo
             FROM usuarios u
             LEFT JOIN roles r ON u.id_rol = r.id_rol
             WHERE u.id_usuario = ?
@@ -203,7 +204,8 @@ class SqlServerUsuarioRepository(IUsuarioRepository):
                 u.activo,
                 u.two_factor_code,
                 u.two_factor_expiry,
-                r.nombre_rol
+                r.nombre_rol,
+                u.nombre_completo
             FROM usuarios u
             LEFT JOIN roles r ON u.id_rol = r.id_rol
             WHERE u.username = ?
@@ -402,24 +404,46 @@ class SqlServerUsuarioRepository(IUsuarioRepository):
         conn.commit()
 
     def deactivate_user(self, user_id):
-        """Desactiva un usuario por su ID."""
+        """Desactiva el acceso y el legajo de forma sincronizada."""
         conn = get_db_write()
         cursor = conn.cursor()
-        query = "UPDATE usuarios SET activo = 0 WHERE id_usuario = ?"
-        cursor.execute(query, user_id)
-        if cursor.rowcount == 0:
-            raise ValueError("Usuario no encontrado.")
-        conn.commit()
+        try:
+            # 1. Identificamos al personal vinculado antes de desactivar
+            cursor.execute("SELECT id_personal FROM usuarios WHERE id_usuario = ?", user_id)
+            row = cursor.fetchone()
+            id_personal = row[0] if row else None
+
+            # 2. Desactivamos la cuenta de acceso (Visto por Sistemas)
+            cursor.execute("UPDATE usuarios SET activo = 0 WHERE id_usuario = ?", user_id)
+
+            # 3. Desactivamos la ficha de personal (Visto por RRHH y Legajos)
+            if id_personal:
+                cursor.execute("UPDATE personal SET activo = 0 WHERE id_personal = ?", id_personal)
+            
+            conn.commit()
+            return True
+        except Exception as e:
+            if conn: conn.rollback()
+            logger.error(f"Error en sincronización de inactividad: {e}")
+            return False
+        finally:
+            cursor.close()
 
     def activate_user(self, user_id):
-        """Activa un usuario por su ID."""
+        """Activa el acceso y el legajo simultáneamente."""
         conn = get_db_write()
         cursor = conn.cursor()
-        query = "UPDATE usuarios SET activo = 1 WHERE id_usuario = ?"
-        cursor.execute(query, user_id)
-        if cursor.rowcount == 0:
-            raise ValueError("Usuario no encontrado.")
-        conn.commit()
+        try:
+            cursor.execute("SELECT id_personal FROM usuarios WHERE id_usuario = ?", user_id)
+            id_personal = cursor.fetchone()[0]
+
+            cursor.execute("UPDATE usuarios SET activo = 1 WHERE id_usuario = ?", user_id)
+            if id_personal:
+                cursor.execute("UPDATE personal SET activo = 1 WHERE id_personal = ?", id_personal)
+            
+            conn.commit()
+        finally:
+            cursor.close()
 
     def update_user_role(self, user_id, new_role_id):
         """Actualiza el rol de un usuario."""
@@ -465,7 +489,7 @@ class SqlServerUsuarioRepository(IUsuarioRepository):
             raise ValueError("Usuario no encontrado.")
         conn.commit()
 
-    def create_user(self, username, email, password_hash, id_rol, activo=True, fecha_creacion=None, id_personal=None):
+    def create_user(self, username, email, password_hash, id_rol, nombre_completo, activo=True, fecha_creacion=None, id_personal=None):
         """
         Crea un nuevo usuario en la base de datos.
         Utiliza la conexión de administrador debido a permisos de INSERT.
@@ -491,10 +515,10 @@ class SqlServerUsuarioRepository(IUsuarioRepository):
         try:
             # Insertar el nuevo usuario
             query = """
-            INSERT INTO usuarios (username, email, password_hash, id_rol, activo, fecha_creacion, id_personal)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO usuarios (username, email, password_hash, id_rol, nombre_completo, activo, fecha_creacion, id_personal)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """
-            cursor.execute(query, username, email, password_hash, id_rol, activo, fecha_creacion or datetime.utcnow(), id_personal)
+            cursor.execute(query, username, email, password_hash, id_rol, nombre_completo, activo, fecha_creacion or datetime.utcnow(), id_personal)
             conn.commit()
             
             # Obtener el ID del usuario creado
@@ -505,6 +529,7 @@ class SqlServerUsuarioRepository(IUsuarioRepository):
             new_user = Usuario(
                 id_usuario=new_id,
                 username=username,
+                nombre_completo=nombre_completo,
                 email=email,
                 password_hash=password_hash,
                 id_rol=id_rol,
@@ -555,11 +580,45 @@ class SqlServerUsuarioRepository(IUsuarioRepository):
             roles.append(role)
         
         return roles
+        
+
+
+    def find_by_personal_id(self, personal_id):
+        """Busca el usuario vinculado por ID numérico. CLAVE PARA EL CASO MARCO."""
+        conn = get_db_read()
+        cursor = conn.cursor()
+        try:
+            # Buscamos por la FK id_personal directamente
+            query = "SELECT id_usuario, username, email, activo FROM usuarios WHERE id_personal = ?"
+            cursor.execute(query, (personal_id,))
+            row = cursor.fetchone()
+            if row:
+                return Usuario(id_usuario=row[0], username=row[1], email=row[2], activo=row[3])
+            return None
+        finally:
+            cursor.close()
 
 # --- REPOSITORIO DE PERSONAL ---
 class SqlServerPersonalRepository(IPersonalRepository):
     # ... (Métodos de personal) ...
 
+
+    def limpiar_historial_errores(self):
+        """Vacia la tabla de errores en SQL Server."""
+        from app.database import get_db_write # 🛡️ Usa tu conector oficial
+        conn = get_db_write()
+        cursor = conn.cursor()
+        try:
+            # 🚀 Asegúrate de usar el nombre que ves en el SSMS (image_2e6a22.png)
+            cursor.execute("DELETE FROM dbo.bitacora_errores") 
+            conn.commit()
+            return True
+        except Exception as e:
+            print(f"Error al limpiar: {str(e)}")
+            return False
+        finally:
+            cursor.close()
+            
     def get_cargos_for_select(self):
         conn = get_db_read()
         cursor = conn.cursor()
@@ -572,45 +631,79 @@ class SqlServerPersonalRepository(IPersonalRepository):
         cursor.execute("SELECT id_tipo_contrato, nombre_tipo FROM tipos_contrato ORDER BY nombre_tipo")
         return [(str(row.id_tipo_contrato), row.nombre_tipo) for row in cursor.fetchall()]
 
-    def registrar_contrato_inicial(self, form_data):
+    def registrar_contrato_inicial(self, form_data, file_bytes, filename):
         """
-        Registra el contrato y el historial laboral inicial en una transacción.
+        Registra el contrato, activa al trabajador (verde), actualiza su unidad/cargo 
+        y crea el hito de apertura con el PDF oficial en una sola transacción.
         """
+        from app.database.connector import get_db_write
+        from datetime import datetime
         conn = get_db_write()
         cursor = conn.cursor()
+        
         try:
-            conn.autocommit = False # Iniciar transacción
+            conn.autocommit = False  # 🛡️ Iniciamos transacción manual
+            ahora_sistema = datetime.now() # 🕒 Capturamos la hora real del servidor
 
-            # 1. Insertar Contrato
+            # 🚀 1. ACTUALIZAR FICHA PRINCIPAL (dbo.personal)
+            # Actualizamos Cargo, Unidad y ponemos Estado = Activo (1) para que salga en verde
+            query_update_personal = """
+            UPDATE dbo.personal 
+            SET id_cargo = ?, 
+                id_unidad = ?, 
+                activo = 1 
+            WHERE id_personal = ?
+            """
+            cursor.execute(query_update_personal, (
+                form_data['id_cargo'], 
+                form_data['id_unidad'], 
+                form_data['id_personal']
+            ))
+
+            # 🚀 2. INSERTAR CONTRATO (dbo.contratos)
             query_contrato = """
-            INSERT INTO contratos (id_personal, id_tipo_contrato, fecha_inicio, fecha_fin, sueldo, resolucion, modalidad)
-            VALUES (?, ?, ?, ?, ?, ?, 'Presencial')
+            INSERT INTO dbo.contratos (
+                id_personal, id_tipo_contrato, id_cargo, fecha_inicio, fecha_fin, 
+                sueldo, resolucion, modalidad
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 'Presencial')
             """
-            cursor.execute(query_contrato, 
-                form_data['id_personal'],
-                form_data['id_tipo_contrato'],
-                form_data['fecha_inicio'],
-                form_data['fecha_fin'] if form_data['fecha_fin'] else None,
-                form_data['sueldo'],
-                form_data['resolucion']
-            )
+            cursor.execute(query_contrato, (
+                form_data['id_personal'], form_data['id_tipo_contrato'], form_data['id_cargo'],
+                form_data['fecha_inicio'], form_data.get('fecha_fin'),
+                form_data['sueldo'], form_data.get('resolucion')
+            ))
 
-            # 2. Insertar Historial Laboral (Cargo Inicial)
-            query_historial = """
-            INSERT INTO historial_laboral (id_personal, id_cargo, id_unidad, fecha_inicio, fecha_fin, motivo_salida)
-            VALUES (?, ?, ?, ?, NULL, 'Cargo Inicial / Ingreso')
+            # 🚀 3. GESTIÓN DEL RECORD LABORAL (dbo.record_laboral)
+            # Limpiamos aperturas previas con ceros o vacías para evitar duplicados "NONE"
+            cursor.execute("DELETE FROM dbo.record_laboral WHERE id_personal = ? AND descripcion LIKE 'Apertura%'", 
+                           (form_data['id_personal'],))
+
+            nro_res = form_data.get('resolucion', 'S/N')
+            desc_oficial = f"Apertura de Legajo - Resolución N° {nro_res}"
+            
+            query_record = """
+            INSERT INTO dbo.record_laboral (
+                id_personal, fecha_inicio, fecha_fin_vencimiento, 
+                descripcion, nombre_archivo, archivo_binario, 
+                fecha_registro, activo
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 1)
             """
-            cursor.execute(query_historial, 
+            cursor.execute(query_record, (
                 form_data['id_personal'],
-                form_data['id_cargo'],
-                form_data['id_unidad'],
-                form_data['fecha_inicio'] # Usamos la misma fecha de inicio del contrato
-            )
+                form_data['fecha_inicio'],        # 📅 Fecha del contrato (ej: 2020)
+                form_data.get('fecha_fin'),       # 📅 Vencimiento inicial
+                desc_oficial,
+                filename,                         # 📄 Nombre del archivo PDF
+                file_bytes,                        # 📄 Binario del PDF (se guarda en SQL)
+                ahora_sistema                     # 🕒 Hora real para el historial
+            ))
 
-            conn.commit()
+            conn.commit() # ✅ Si todo salió bien, guardamos los cambios de las 3 tablas
             return True
+
         except Exception as e:
-            conn.rollback()
+            if 'conn' in locals(): conn.rollback() # ❌ Si algo falla, deshacemos todo para no ensuciar la DB
+            print(f"!!! Error crítico en contratación: {str(e)}")
             raise e
         finally:
             conn.autocommit = True
@@ -689,9 +782,6 @@ class SqlServerPersonalRepository(IPersonalRepository):
         # Se asume que el SP devuelve filas que se pueden mapear al modelo Documento.
         return [_row_to_dict(cursor, row) for row in cursor.fetchall()]
 
-    # RUTA: app/infrastructure/persistence/sqlserver_repository.py
-
-# ... dentro de class SqlServerPersonalRepository ...
 
     # 1. ACTUALIZACIÓN: Obtener Legajo Completo (Forzando lectura de fechas)
     # Busca este método dentro de SqlServerPersonalRepository:
@@ -699,40 +789,41 @@ class SqlServerPersonalRepository(IPersonalRepository):
     def get_full_legajo_by_id(self, personal_id):
         """
         Obtiene el legajo completo de un trabajador. 
-        CORREGIDO: Incluye el nombre descriptivo del tipo de documento para la tabla.
+        CORREGIDO: Ahora jala el nombre de la Unidad Administrativa para la cabecera.
         """
         conn = get_db_read()
         cursor = conn.cursor()
         try:
-            # 1. Ejecutar el procedimiento original para la información personal básica
+            # 1. Ejecutar procedimiento para info básica
             cursor.execute("{CALL sp_obtener_legajo_completo_por_personal(?)}", personal_id)
             personal_info = _row_to_dict(cursor, cursor.fetchone())
             
             if not personal_info: 
                 return None 
+
+            # 🚀 EL PUENTE MANUAL (Añadido): Buscamos el nombre de la unidad
+            # Como el SP anterior no hace el JOIN, lo hacemos nosotros aquí en Python.
+            id_unidad = personal_info.get('id_unidad')
+            if id_unidad:
+                cursor.execute("SELECT nombre FROM unidad_administrativa WHERE id_unidad = ?", id_unidad)
+                unidad_row = cursor.fetchone()
+                # Guardamos el nombre en 'nombre_unidad' para que el HTML lo encuentre
+                personal_info['nombre_unidad'] = unidad_row[0] if unidad_row else "No especificada"
+            else:
+                personal_info['nombre_unidad'] = "Sin Unidad Asignada"
                 
             legajo = {"personal": personal_info}
             
-            # 2. Cargar sets intermedios del Stored Procedure (Estudios, Contratos, etc.)
+            # 2. Cargar sets intermedios del SP (Estudios, Capacitaciones, etc.)
             if cursor.nextset(): legajo["estudios"] = [_row_to_dict(cursor, r) for r in cursor.fetchall()]
             if cursor.nextset(): legajo["capacitaciones"] = [_row_to_dict(cursor, r) for r in cursor.fetchall()]
             if cursor.nextset(): legajo["contratos"] = [_row_to_dict(cursor, r) for r in cursor.fetchall()]
             if cursor.nextset(): legajo["historial_laboral"] = [_row_to_dict(cursor, r) for r in cursor.fetchall()]
             if cursor.nextset(): legajo["licencias"] = [_row_to_dict(cursor, r) for r in cursor.fetchall()]
             
-            # --- SOLUCIÓN PARA LA COLUMNA VACÍA Y EL CONTADOR 0 ---
-            # Hacemos el JOIN con 'tipo_documento' para traer el 'nombre_tipo' (ej: DNI)
+            # 3. Documentos del Legajo (DNI, CV, etc.)
             query_docs = """
-                SELECT 
-                    d.id_documento, 
-                    d.nombre_archivo, 
-                    d.descripcion, 
-                    d.fecha_subida, 
-                    d.id_tipo, 
-                    d.id_seccion, 
-                    d.fecha_inicio, 
-                    d.fecha_fin,
-                    td.nombre_tipo  -- <--- ESTO ES LO QUE LLENA TU COLUMNA VACÍA
+                SELECT d.*, td.nombre_tipo 
                 FROM documentos d
                 LEFT JOIN tipo_documento td ON d.id_tipo = td.id_tipo
                 WHERE d.id_personal = ? AND d.activo = 1
@@ -741,6 +832,24 @@ class SqlServerPersonalRepository(IPersonalRepository):
             cursor.execute(query_docs, personal_id)
             # Guardamos los resultados para que el HTML los reconozca por nombre
             legajo["documentos"] = [_row_to_dict(cursor, row) for row in cursor.fetchall()]
+
+            # 4. RÉCORD LABORAL (PLANILLAS Y PAGOS)
+            query_record = """
+                SELECT 
+                    id_record, 
+                    anio, 
+                    mes, 
+                    descripcion, 
+                    nombre_archivo, 
+                    fecha_registro,  -- <--- AGREGAMOS ESTO PARA LA AUDITORÍA
+                    fecha_inicio, 
+                    fecha_fin_vencimiento
+                FROM record_laboral 
+                WHERE id_personal = ? AND activo = 1
+                ORDER BY fecha_registro DESC -- Ordenamos por lo más reciente
+            """
+            cursor.execute(query_record, personal_id)
+            legajo["record_laboral"] = [_row_to_dict(cursor, row) for row in cursor.fetchall()]
             
             return legajo
         finally:
@@ -748,18 +857,60 @@ class SqlServerPersonalRepository(IPersonalRepository):
         
             
     # Llama a un SP para listar, filtrar y paginar al personal.
+    # RUTA: app/infrastructure/persistence/sqlserver_repository.py
+
     def get_all_paginated(self, page, per_page, filters):
+        """
+        Obtiene la lista de personal uniendo datos de contratos y cargos de forma segura.
+        """
+        from app.database import get_db_read
         conn = get_db_read()
         cursor = conn.cursor()
+        
         dni_filter = filters.get('dni') if filters else None
         nombres_filter = filters.get('nombres') if filters else None
         
-        cursor.execute("{CALL sp_listar_personal_paginado(?, ?, ?, ?)}", page, per_page, dni_filter, nombres_filter)
-        results = [_row_to_dict(cursor, row) for row in cursor.fetchall()]
-        
-        cursor.nextset()
-        total = cursor.fetchone()[0]
-        return SimplePagination(results, page, per_page, total)
+        try:
+            # 1. Ejecutamos el SP para traer DNI y Nombres
+            cursor.execute("{CALL sp_listar_personal_paginado(?, ?, ?, ?)}", 
+                           page, per_page, dni_filter, nombres_filter)
+            results = [_row_to_dict(cursor, row) for row in cursor.fetchall()]
+            
+            # 2. Consumimos el total ANTES del bucle para liberar la conexión
+            total = 0
+            if cursor.nextset():
+                total_row = cursor.fetchone()
+                total = total_row[0] if total_row else 0
+            
+            # 🚀 3. EL PARCHE DEFINITIVO (Carga Sueldo y Cargo Real)
+            for persona in results:
+                # A. Buscamos el SUELDO más reciente en contratos
+                cursor.execute("""
+                    SELECT TOP 1 sueldo 
+                    FROM dbo.contratos 
+                    WHERE id_personal = ? 
+                    ORDER BY fecha_inicio DESC
+                """, (persona['id_personal'],))
+                sueldo_row = cursor.fetchone()
+                persona['sueldo'] = sueldo_row[0] if sueldo_row else None
+                
+                # B. Buscamos el CARGO uniendo Personal con Cargos (Evita el error de columna)
+                cursor.execute("""
+                    SELECT car.nombre_cargo 
+                    FROM dbo.personal p
+                    LEFT JOIN dbo.cargos car ON p.id_cargo = car.id_cargo
+                    WHERE p.id_personal = ?
+                """, (persona['id_personal'],))
+                cargo_row = cursor.fetchone()
+                persona['nombre_cargo'] = cargo_row[0] if cargo_row else "No asignado"
+
+                # Traducción de unidad para el HTML
+                persona['nombre_unidad'] = persona.get('unidad_administrativa') or "Sin Unidad Asignada"
+            
+            return SimplePagination(results, page, per_page, total)
+            
+        finally:
+            cursor.close()
 
     # Llama a un SP para crear un nuevo registro de personal.
     def create(self, form_data):
@@ -843,41 +994,65 @@ class SqlServerPersonalRepository(IPersonalRepository):
         return [(row.id_tipo, row.nombre_tipo) for row in cursor.fetchall()]
 
     # Implementación del método de actualización.
+    # RUTA: app/infrastructure/persistence/sqlserver_repository.py
+
     def update(self, personal_id, form_data):
-        conn = get_db_write()
-        cursor = conn.cursor()
-        
-        # Normalizar nombres y apellidos a formato título (Primera Letra Mayúscula)
-        nombres = form_data.get('nombres', '').strip().lower().title() if form_data.get('nombres') else None
-        apellidos = form_data.get('apellidos', '').strip().lower().title() if form_data.get('apellidos') else None
-        
-        # Convertir valores vacíos o '0' a ID 19 ('No especificado') para mantener integridad referencial
-        id_unidad = form_data.get('id_unidad')
-        if id_unidad in ('0', '', None, 0):
-            id_unidad = 19  # ID de 'No especificado' en unidad_administrativa
-        
-        fecha_ingreso = form_data.get('fecha_ingreso')
-        if not fecha_ingreso:
-            fecha_ingreso = None
-        
-        # Llama a un SP para actualizar los datos del personal.
-        params = (
-            personal_id,
-            form_data.get('dni'),
-            nombres,
-            apellidos,
-            form_data.get('sexo'),
-            form_data.get('fecha_nacimiento'),
-            form_data.get('direccion'),
-            form_data.get('telefono'),
-            form_data.get('email') or None,
-            form_data.get('estado_civil') or None,
-            form_data.get('nacionalidad'),
-            id_unidad,
-            fecha_ingreso
-        )
-        cursor.execute("{CALL sp_actualizar_personal(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)}", params)
-        conn.commit()
+        """
+        Actualiza los datos del personal en la BaseDatosDiresa usando el SP.
+        Garantiza que el cambio de unidad administrativa (ej. ID 6) se guarde correctamente.
+        """
+        try:
+            # Importación local para asegurar el acceso al conector de escritura
+            from app.database.connector import get_db_write
+            conn = get_db_write()
+            cursor = conn.cursor()
+            
+            # 1. Normalización de nombres y apellidos (Formato Título)
+            nombres = form_data.get('nombres', '').strip().lower().title() if form_data.get('nombres') else None
+            apellidos = form_data.get('apellidos', '').strip().lower().title() if form_data.get('apellidos') else None
+            
+            # 2. Manejo de la Unidad Administrativa (Evita el ID 19 si el dato es válido)
+            id_unidad = form_data.get('id_unidad')
+            if id_unidad in ('0', '', None, 0, 'None'):
+                id_unidad = 19  # 'No especificado' para mantener integridad referencial
+            
+            # 3. Limpieza de campos opcionales para evitar errores en el SP
+            email = form_data.get('email', '').strip() or None
+            telefono = form_data.get('telefono', '').strip() or None
+            direccion = form_data.get('direccion', '').strip() or None
+            nacionalidad = form_data.get('nacionalidad', '').strip() or "Peruana"
+            estado_civil = form_data.get('estado_civil') or None
+            
+            # 4. Preparación de los 13 parámetros exactos para sp_actualizar_personal
+            params = (
+                personal_id,                    # 1. ID del trabajador
+                form_data.get('dni'),           # 2. DNI
+                nombres,                        # 3. Nombres
+                apellidos,                      # 4. Apellidos
+                form_data.get('sexo'),          # 5. Sexo (M/F)
+                form_data.get('fecha_nacimiento') or None, # 6. F. Nacimiento
+                direccion,                      # 7. Dirección
+                telefono,                       # 8. Teléfono
+                email,                          # 9. Email
+                estado_civil,                   # 10. Estado Civil
+                nacionalidad,                   # 11. Nacionalidad
+                id_unidad,                      # 12. ID Unidad (ej. 6 para ADMIN)
+                form_data.get('fecha_ingreso') or None # 13. F. Ingreso
+            )
+            
+            # 5. Ejecución del Procedimiento Almacenado
+            cursor.execute("{CALL sp_actualizar_personal(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)}", params)
+            conn.commit()
+            
+            # --- CLAVE DEL ÉXITO: Devolver True para que la Ruta de Flask sepa que funcionó ---
+            return True 
+
+        except Exception as e:
+            if 'conn' in locals():
+                conn.rollback()
+            # Este mensaje aparecerá en tu terminal de VS Code para depuración
+            print(f"Error crítico al actualizar personal ID {personal_id}: {str(e)}")
+            return False
 
 
     # Llama a un SP para obtener todos los datos necesarios para el reporte general.
@@ -889,10 +1064,29 @@ class SqlServerPersonalRepository(IPersonalRepository):
     
     # Llama al SP para el borrado suave (desactivación) de un empleado.
     def delete_by_id(self, personal_id):
+        """
+        Baja integral sincronizada. Apaga el legajo y el usuario al mismo tiempo.
+        Esto garantiza consistencia para los 3 roles de la HMPP.
+        """
         conn = get_db_write()
         cursor = conn.cursor()
-        cursor.execute("{CALL sp_eliminar_personal(?)}", personal_id)
-        conn.commit()
+        try:
+            # 1. Inactivar el legajo (Visto por Administrador de Legajos)
+            cursor.execute("UPDATE personal SET activo = 0 WHERE id_personal = ?", personal_id)
+            
+            # 2. Inactivar el usuario vinculado (Visto por Sistemas y RRHH)
+            # Usamos el id_personal como puente directo, ignorando correos nulos.
+            cursor.execute("UPDATE usuarios SET activo = 0 WHERE id_personal = ?", personal_id)
+            
+            conn.commit()
+            logger.info(f"BAJA SINCRONIZADA: Personal y Usuario ID {personal_id} inactivados con éxito.")
+            return True
+        except Exception as e:
+            if conn: conn.rollback()
+            logger.error(f"Error crítico en baja sincronizada para ID {personal_id}: {e}")
+            raise e
+        finally:
+            cursor.close()
     
     def activate_by_id(self, personal_id):
         """Reactiva un empleado previamente desactivado."""
@@ -1422,7 +1616,60 @@ class SqlServerPersonalRepository(IPersonalRepository):
         return [_row_to_dict(cursor, row) for row in cursor.fetchall()]
 
 
+    def get_personal_para_escalafon(self, page, per_page, dni=None, nombres=None):
+        """
+        Versión final 100% sincronizada con los nombres de columna de SSMS.
+        Resuelve el error 42S22 de 'Invalid column name'.
+        """
+        from app.database import get_db_read
+        conn = get_db_read()
+        cursor = conn.cursor()
+        offset = (page - 1) * per_page
+        
+        # 🚀 SQL SINCRONIZADO: Usamos los nombres reales de image_384f65.png
+        query = """
+            SELECT 
+                p.id_personal, p.dni, p.nombres, p.apellidos, p.activo,
+                c.nombre_cargo, 
+                u.nombre AS nombre_unidad,           -- 🛡️ 'nombre' es el real en SSMS
+                con.sueldo,
+                tc.nombre_tipo AS nombre_tipo_contrato, -- 🛡️ 'nombre_tipo' es el real en SSMS
+                COUNT(*) OVER() as total_count
+            FROM dbo.personal p
+            LEFT JOIN dbo.cargos c ON p.id_cargo = c.id_cargo
+            LEFT JOIN dbo.unidad_administrativa u ON p.id_unidad = u.id_unidad 
+            LEFT JOIN dbo.contratos con ON con.id_contrato = (
+                SELECT TOP 1 id_contrato FROM dbo.contratos 
+                WHERE id_personal = p.id_personal 
+                ORDER BY fecha_inicio DESC
+            )
+            LEFT JOIN dbo.tipos_contrato tc ON con.id_tipo_contrato = tc.id_tipo_contrato
+            WHERE 1=1
+        """
+        
+        params = []
+        if dni:
+            query += " AND p.dni LIKE ?"
+            params.append(f"%{dni}%")
+        if nombres:
+            query += " AND (p.nombres LIKE ? OR p.apellidos LIKE ?)"
+            params.extend([f"%{nombres}%", f"%{nombres}%"])
 
+        query += " ORDER BY p.apellidos ASC OFFSET ? ROWS FETCH NEXT ? ROWS ONLY"
+        params.extend([offset, per_page])
+
+        try:
+            cursor.execute(query, params)
+            columns = [column[0] for column in cursor.description]
+            results = [dict(zip(columns, row)) for row in cursor.fetchall()]
+            total = results[0]['total_count'] if results else 0
+            return results, total
+        except Exception as e:
+            print(f"DEBUG ERROR SQL FINAL: {str(e)}")
+            raise e
+        finally:
+            cursor.close()
+            
         # app/infrastructure/persistence/sqlserver_repository.py
 
     def get_personal_by_id(self, id_personal):
@@ -1480,15 +1727,49 @@ class SqlServerPersonalRepository(IPersonalRepository):
             cursor.close()
 
     def get_records_by_personal(self, id_personal):
-                """Trae el historial de la nueva tabla."""
-                conn = get_db_read()
-                cursor = conn.cursor()
-                try:
-                    query = "SELECT * FROM record_laboral WHERE id_personal = ? AND activo = 1 ORDER BY anio DESC, mes DESC"
-                    cursor.execute(query, id_personal)
-                    return [_row_to_dict(cursor, row) for row in cursor.fetchall()]
-                finally:
-                    cursor.close()
+        """
+        Trae el historial completo de la tabla record_laboral.
+        Sincronizado para mostrar fechas, horas, archivos y descripciones sin errores.
+        """
+        from app.database import get_db_read # Asegúrate de que la ruta de importación sea la correcta
+        conn = get_db_read()
+        cursor = conn.cursor()
+        
+        try:
+            # 🚀 CAMBIOS CLAVE:
+            # 1. Seleccionamos columnas específicas para evitar errores de columnas inexistentes.
+            # 2. Usamos 'fecha_inicio' y 'fecha_fin_vencimiento' en lugar de anio/mes.
+            # 3. Incluimos 'nombre_archivo' y 'descripcion' para que no salgan vacíos.
+            # 4. Ordenamos por 'fecha_registro' para ver lo más reciente al principio.
+            
+            query = """
+                SELECT 
+                    id_record, 
+                    fecha_inicio,           -- 📅 Fecha del periodo/contrato
+                    fecha_fin_vencimiento,  -- 📅 Fecha de vigencia
+                    fecha_registro,         -- 🕒 Marca de tiempo del sistema (Evita ceros)
+                    descripcion,            -- 📝 Descripción del documento
+                    nombre_archivo,         -- 📄 Nombre del PDF/Excel
+                    archivo_ruta, 
+                    activo 
+                FROM dbo.record_laboral 
+                WHERE id_personal = ? AND activo = 1 
+                ORDER BY fecha_registro DESC
+            """
+            
+            # 🚀 CORRECCIÓN DE PARÁMETRO:
+            # Se debe pasar como una tupla (id_personal,) para evitar errores de ejecución en SQL Server.
+            cursor.execute(query, (id_personal,))
+            
+            # Convertimos las filas a diccionarios para que Flask pueda leerlos fácilmente
+            return [_row_to_dict(cursor, row) for row in cursor.fetchall()]
+            
+        except Exception as e:
+            print(f"❌ Error al obtener récords de personal #{id_personal}: {str(e)}")
+            return [] # Devolvemos lista vacía para que la tabla no rompa la página
+            
+        finally:
+            cursor.close()
     
     def get_record_file_by_id(self, id_record):
         """Recupera el archivo binario de la tabla record_laboral para su visualización."""
@@ -1550,6 +1831,27 @@ class SqlServerPersonalRepository(IPersonalRepository):
             cursor.close()
 
     
+    # RUTA: app/infrastructure/persistence/sqlserver_repository.py
+
+    def create_personal_basico(self, nombres, apellidos, dni, sexo, id_unidad, email, fecha_nacimiento, nacionalidad, activo=1):
+        from app.database.connector import get_db_admin 
+        conn = get_db_admin() 
+        cursor = conn.cursor()
+        try:
+            # Añadimos los campos que estaban causando el bloqueo en el formulario
+            query = """
+            INSERT INTO personal (dni, nombres, apellidos, sexo, id_unidad, email, fecha_nacimiento, nacionalidad, activo) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """
+            cursor.execute(query, (dni, nombres, apellidos, sexo, id_unidad, email, fecha_nacimiento, nacionalidad, activo)) 
+            conn.commit()
+
+            cursor.execute("SELECT @@IDENTITY AS id_personal")
+            new_id = cursor.fetchone()[0]
+            return type('Personal', (), {'id_personal': new_id})()
+        except Exception as e:
+            if conn: conn.rollback()
+            raise Exception(f"Error al crear personal con campos completos: {e}")
     # RECUPERAR Y ELIMAR MASIVO
 
 
@@ -1585,18 +1887,28 @@ class SqlServerPersonalRepository(IPersonalRepository):
         finally:
             cursor.close()
 
-# OPCIONAL: Verifica que get_records_by_personal no oculte datos
-# Si un trabajador cesa, su historial debe seguir siendo visible
-def get_records_by_personal(self, id_personal):
-    """Trae el historial. Asegúrate de que 'activo=1' se refiera al registro y no a la persona."""
-    conn = get_db_read()
-    cursor = conn.cursor()
-    try:
-        query = "SELECT * FROM record_laboral WHERE id_personal = ? AND activo = 1 ORDER BY anio DESC, mes DESC"
-        cursor.execute(query, (id_personal,))
-        return [_row_to_dict(cursor, row) for row in cursor.fetchall()]
-    finally:
-        cursor.close()
+    # Dentro de SqlServerPersonalRepository en sqlserver_repository.py
+
+    def existe_dni_en_otros(self, dni, id_personal_actual):
+        """
+        Verifica si un DNI ya existe en la municipalidad, 
+        pero ignora al trabajador que estamos editando actualmente.
+        """
+        from app.database.connector import get_db_read
+        conn = get_db_read()
+        cursor = conn.cursor()
+        
+        # 🚀 LA LÓGICA DE INGENIERÍA:
+        # Buscamos el DNI pero pedimos que el ID sea DIFERENTE (<>) al actual.
+        query = "SELECT COUNT(*) FROM personal WHERE dni = ? AND id_personal <> ?"
+        
+        cursor.execute(query, (dni, id_personal_actual))
+        resultado = cursor.fetchone()
+        
+        # Si el conteo es mayor a 0, significa que el DNI ya lo tiene OTRA persona
+        return resultado[0] > 0
+
+
 
 
 # Implementación completa y corregida del repositorio de auditoría.
@@ -1639,43 +1951,96 @@ def _row_to_dict(cursor, row):
     return {col[0]: row[idx] for idx, col in enumerate(cursor.description)}
 
 class SqlServerBackupRepository:
-    
-    # --- SECCIÓN DE BACKUPS (Tu código funcional, sin cambios) ---
+    # --- SECCIÓN DE BACKUPS SINCRONIZADA CON .ENV ---
+    # RUTA: app/infrastructure/persistence/sqlserver_repository.py
+
     def run_db_backup(self, db_name, file_path):
         try:
             db_server = os.getenv('DB_SERVER')
-            db_username = os.getenv('DB_USERNAME_SA') 
-            db_password = os.getenv('DB_PASSWORD_SA')
+            db_username = os.getenv('DB_USERNAME_WRITE')
+            db_password = os.getenv('DB_PASSWORD_WRITE')
+
             if not all([db_server, db_username, db_password]):
                 raise ValueError("Variables de BD no configuradas en .env")
-            backup_query = f"BACKUP DATABASE [{db_name}] TO DISK = N'{file_path}' WITH STATS = 10;"
-            sqlcmd_command = ["sqlcmd", "-S", db_server, "-U", db_username, "-P", db_password, "-Q", backup_query, "-b"]
+
+            backup_query = f"BACKUP DATABASE [{db_name}] TO DISK = N'{file_path}' WITH FORMAT, STATS = 10;"
+            
+            # 🚀 EL PARCHE FINAL: Añadimos "-C" para ignorar el error de certificado SSL
+            sqlcmd_command = [
+                "sqlcmd", 
+                "-S", db_server, 
+                "-U", db_username, 
+                "-P", db_password, 
+                "-C",  # <--- CONFÍA EN EL CERTIFICADO (Trust Server Certificate)
+                "-Q", backup_query, 
+                "-b"
+            ]
+
             process = subprocess.run(sqlcmd_command, capture_output=True, text=True, timeout=120, check=False)
+            
             if process.returncode == 0:
-                print("---[ÉXITO]: sqlcmd completó el backup correctamente.")
+                print(f"---[ÉXITO]: Backup creado en {file_path}")
                 return True
             else:
-                error_message = (f"!!! FALLO CRÍTICO DE SQLCMD:\n"
-                                 f"CÓDIGO: {process.returncode}\nERROR: {process.stderr}\nSALIDA: {process.stdout}")
+                error_message = f"FALLO SQLCMD: {process.stderr}"
                 print(error_message)
-                raise Exception("Fallo en la ejecución de sqlcmd.")
+                raise Exception(error_message)
         except Exception as e:
             print(f"!!! ERROR INESPERADO en run_db_backup: {e}")
             raise
 
+
+    # RUTA: app/infrastructure/persistence/sqlserver_repository.py
+
+    # RUTA: app/infrastructure/persistence/sqlserver_repository.py
+
     def get_backup_history(self):
+        """
+        Obtiene los últimos 5 backups leyendo el tamaño real de 'detalle_json'.
+        """
         try:
             from app.database.connector import get_db_read
+            import json
             conn = get_db_read()
             cursor = conn.cursor()
+            
+            # 🚀 CORRECCIÓN: Seleccionamos la columna real 'detalle_json'
             query = """
-            SELECT TOP 5 fecha_hora AS fecha_registro, modulo, descripcion, 'FULL' AS Tipo, '5.5 GB' AS Tamanio, 'Éxito' AS Estado
-            FROM bitacora WHERE accion IN ('BACKUP', 'COPIA_SEGURIDAD') ORDER BY fecha_registro DESC;
+                SELECT TOP 5 
+                    fecha_hora AS fecha_registro, 
+                    modulo, 
+                    descripcion, 
+                    'FULL' AS Tipo, 
+                    'Éxito' AS Estado,
+                    detalle_json -- <--- AQUÍ ESTÁ EL PESO REAL
+                FROM bitacora 
+                WHERE accion IN ('BACKUP', 'COPIA_SEGURIDAD') 
+                ORDER BY fecha_registro DESC;
             """
             cursor.execute(query)
-            return [_row_to_dict(cursor, row) for row in cursor.fetchall()]
+            rows = cursor.fetchall()
+            
+            historial_real = []
+            for row in rows:
+                item = _row_to_dict(cursor, row)
+                
+                # 🚀 EXTRACCIÓN DINÁMICA:
+                tamanio_mostrado = "Calculando..." 
+                if item.get('detalle_json'):
+                    try:
+                        # Convertimos el texto JSON en datos de Python
+                        meta_datos = json.loads(item['detalle_json'])
+                        tamanio_mostrado = meta_datos.get('tamano', 'Sin registro')
+                    except:
+                        tamanio_mostrado = "Error format"
+                
+                # Reemplazamos el valor para la tabla web
+                item['Tamanio'] = tamanio_mostrado
+                historial_real.append(item)
+                
+            return historial_real
         except Exception as e:
-            print(f"!!! ERROR al obtener historial de backups: {e}")
+            print(f"!!! ERROR al mostrar historial real: {e}")
             return []
 
     # --- SECCIÓN DE MANEJO DE ERRORES (Añadida anteriormente) ---

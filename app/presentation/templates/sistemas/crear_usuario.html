@@ -1,50 +1,80 @@
 {% extends 'layouts/dashboard.html' %}
 {% from "components/_form_helpers.html" import render_field %}
 
-{% block title %}Crear Nuevo Usuario{% endblock %}
+{% block title %}Crear Nuevo Usuario - Escalafón Digital{% endblock %}
 
 {% block dashboard_content %}
-<div class="container-fluid">
-    <h1 class="h3 mb-4 text-gray-800">Crear Nuevo Usuario</h1>
+<div class="container-fluid px-4">
+    <h1 class="h3 mb-4 text-gray-800">
+        <i class="fas fa-user-plus text-primary me-2"></i>Crear Nuevo Usuario
+    </h1>
 
-    <div class="card shadow mb-4">
-        <div class="card-header py-3">
-            <h6 class="m-0 font-weight-bold text-primary">Datos del Nuevo Usuario</h6>
+    <div class="card shadow mb-4 border-0">
+        <div class="card-header py-3 bg-white border-bottom">
+            <h6 class="m-0 font-weight-bold text-primary">Datos de Identidad y Acceso</h6>
         </div>
-        <div class="card-body">
+        <div class="card-body p-4">
             <form method="POST" action="{{ url_for('sistemas.crear_usuario') }}" class="user">
                 {{ form.csrf_token }}
                 
-                <div class="form-group row">
+                {# 1. Nombre Completo: Quitamos la etiqueta manual. La macro render_field pone el label #}
+                <div class="form-group mb-4">
+                    {{ render_field(form.nombre_completo, class="form-control form-control-user", 
+                       placeholder="Ej: Jairo Francisco Santos Mandujano") }}
+                    
+                </div>
+
+                <div class="form-group row mb-4">
                     <div class="col-sm-6 mb-3 mb-sm-0">
-                        {{ render_field(form.username, class="form-control form-control-user", placeholder="Nombre de Usuario") }}
+                        {# 2. Nombre de Usuario cambiado a DNI #}
+                        {{ render_field(form.username, class="form-control form-control-user", 
+                        placeholder="Ingrese los 8 dígitos del DNI", 
+                        maxlength="8", 
+                        oninput="this.value = this.value.replace(/[^0-9]/g, '')") }}
+                        <small class="form-text text-muted px-2">Este será el usuario de acceso.</small>
+                    </div>
+                    
+                    <div class="col-sm-6">
+                        {# 3. Correo: La macro ya sabe que el label es "Correo Electrónico" #}
+                        {{ render_field(form.email, class="form-control form-control-user", placeholder="usuario@municipio.gob.pe") }}
+                    </div>
+                </div>
+
+                {# 4. Selector de Rol: Mantenemos la traducción visual a AdministradorEscalafon #}
+                <div class="form-group mb-4">
+                    <label for="id_rol" class="form-label small fw-bold text-primary">Asignación de Rol de Acceso</label>
+                    <select name="id_rol" id="id_rol" class="form-select form-select-lg" style="border-radius: 10px; font-size: 0.9rem;">
+                        {% for value, label in form.id_rol.choices %}
+                            <option value="{{ value }}" {% if form.id_rol.data|string == value|string %}selected{% endif %}>
+                                {% if label == 'AdministradorLegajos' or value == 'AdministradorLegajos' %}
+                                    AdministradorEscalafon
+                                {% else %}
+                                    {{ label }}
+                                {% endif %}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="form-group row mb-4">
+                    <div class="col-sm-6 mb-3 mb-sm-0">
+                        {{ render_field(form.password, class="form-control form-control-user", placeholder="Mínimo 8 caracteres") }}
                     </div>
                     <div class="col-sm-6">
-                        {{ render_field(form.email, class="form-control form-control-user", placeholder="Correo Electrónico (Opcional)") }}
+                        {{ render_field(form.confirm, class="form-control form-control-user", placeholder="Repita la contraseña") }}
                     </div>
                 </div>
 
-                <div class="form-group">
-                    {{ render_field(form.id_rol, class="form-control") }}
+                <hr class="my-4">
+
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-primary btn-user px-5 shadow-sm">
+                        <i class="fas fa-check-circle me-2"></i>Registrar en el Sistema
+                    </button>
+                    <a href="{{ url_for('sistemas.gestionar_usuarios') }}" class="btn btn-secondary btn-user px-4">
+                        <i class="fas fa-times-circle me-2"></i>Cancelar
+                    </a>
                 </div>
-
-                <div class="form-group row">
-                    <div class="col-sm-6 mb-3 mb-sm-0">
-                        {{ render_field(form.password, class="form-control form-control-user", placeholder="Contraseña") }}
-                    </div>
-                    <div class="col-sm-6">
-                        {{ render_field(form.confirm, class="form-control form-control-user", placeholder="Repetir Contraseña") }}
-                    </div>
-                </div>
-
-                <hr>
-
-                <button type="submit" class="btn btn-primary btn-user">
-                    <i class="fas fa-plus-circle mr-2"></i>Crear Usuario
-                </button>
-                <a href="{{ url_for('sistemas.gestionar_usuarios') }}" class="btn btn-secondary btn-user">
-                    <i class="fas fa-arrow-left mr-2"></i>Cancelar
-                </a>
             </form>
         </div>
     </div>

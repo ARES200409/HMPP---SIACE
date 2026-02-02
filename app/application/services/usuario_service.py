@@ -11,9 +11,10 @@ import logging
 logger = logging.getLogger(__name__)
 
 class UsuarioService:
-    def __init__(self, usuario_repository, email_service):
+    def __init__(self, usuario_repository, personal_repo, email_service):
         self._usuario_repo = usuario_repository
         self._email_service = email_service
+        self._personal_repo = personal_repo
 
     def attempt_login(self, username, password):
         """
@@ -169,77 +170,93 @@ class UsuarioService:
 
     def create_user(self, user_data):
         """
-        Crea un nuevo usuario en el sistema con validaciones.
-        
-        Args:
-            user_data: Diccionario con los datos del usuario (username, email, password, id_rol)
-        
-        Returns:
-            Tupla (mensaje, tipo_flash)
+        Crea un nuevo usuario y su ficha de personal básica automáticamente.
+        Garantiza que el legajo sea 'editable' al incluir campos obligatorios desde el inicio.
         """
         try:
-            # Extraer datos del formulario
-            username = user_data.get('username', '').strip()
-            email = user_data.get('email', '').strip()
+            # 1. Extraer y limpiar datos del formulario
+            username = user_data.get('username', '').strip().lower()
+            nombre_completo = user_data.get('nombre_completo', '').strip()
+            email_form = user_data.get('email', '').strip()
             password = user_data.get('password', '').strip()
             id_rol = user_data.get('id_rol')
             
-            # Validaciones básicas - email es opcional para creación automática
+            # 2. Validaciones básicas obligatorias
             if not username or not password or not id_rol:
                 return "Usuario, contraseña y rol son obligatorios", "warning"
             
-            # Si no hay email, generar uno por defecto basado en el username (DNI)
-            if not email:
-                email = f"{username}@noespecificado.local"
+            if not nombre_completo:
+                return "El nombre completo es requerido para generar el legajo automático", "warning"
+
+            # 3. Verificaciones de duplicidad en la tabla de Usuarios
+            if self._usuario_repo.find_by_username(username):
+                return f"El nombre de usuario '{username}' ya existe", "warning"
             
-            if len(username) < 3:
-                return "El nombre de usuario debe tener al menos 3 caracteres", "warning"
-            
-            if len(password) < 8:
-                return "La contraseña debe tener al menos 8 caracteres", "warning"
-            
-            # Verificar que el username no exista
-            existing_user = self._usuario_repo.find_by_username(username)
-            if existing_user:
-                return f"El nombre de usuario '{username}' ya existe en el sistema", "warning"
-            
-            # Verificar que el email no exista (si es un email real, no el placeholder)
-            if not email.endswith('@noespecificado.local'):
-                existing_email = self._usuario_repo.find_by_email(email)
-                if existing_email:
-                    return f"El correo electrónico '{email}' ya está registrado", "warning"
-            
-            # Generar hash de la contraseña
+            # 4. LÓGICA DE VINCULACIÓN AUTOMÁTICA (Opción B)
+            id_personal = user_data.get('id_personal')
+
+            if not id_personal:
+                # --- PREPARACIÓN DE DATOS PARA EVITAR BLOQUEOS DE EDICIÓN ---
+                
+                # Dividimos el nombre para la estructura Nombres/Apellidos
+                partes = nombre_completo.split(' ', 1)
+                nom = partes[0]
+                ape = partes[1] if len(partes) > 1 else "Apellido por Completar"
+
+                # Generamos un email único para evitar el error UNIQUE (Mens 2627)
+                email_personal = email_form if email_form else f"{username}@legajo.hmpp.gob.pe"
+
+                # Valores por defecto para campos obligatorios (NOT NULL)
+                fecha_temp = datetime.now().strftime('%Y-%m-%d') # Fecha de hoy como placeholder
+                nacionalidad_temp = "Peruana"
+
+                try:
+                    # CREACIÓN DEL LEGAJO COMPLETO: Ahora incluimos Nacimiento y Nacionalidad
+                    nuevo_personal = self._personal_repo.create_personal_basico(
+                        dni=username,           # Usamos el username como DNI
+                        nombres=nom,
+                        apellidos=ape,
+                        sexo='M',               # Valor por defecto obligatorio
+                        id_unidad=1,            # ID 1 = Sistemas (Oficina inicial)
+                        email=email_personal,    # Email único garantizado
+                        fecha_nacimiento=fecha_temp, # <--- Agregado para desbloquear edición
+                        nacionalidad=nacionalidad_temp, # <--- Agregado para desbloquear edición
+                        activo=1                # Activo por defecto
+                    )
+                    id_personal = nuevo_personal.id_personal
+                    logger.info(f"Legajo editable #{id_personal} creado para {username}")
+                    
+                except Exception as e:
+                    logger.error(f"Error al crear legajo automático: {e}")
+                    return f"Error al generar la ficha de personal vinculada: {str(e)}", "danger"
+
+            # 5. Cifrado de contraseña y creación del usuario final
             password_hash = generate_password_hash(password)
             
-            # Obtener id_personal si está disponible
-            id_personal = user_data.get('id_personal')
-            
-            # Crear el usuario en la base de datos
             new_user = self._usuario_repo.create_user(
                 username=username,
-                email=email,
+                nombre_completo=nombre_completo,
+                email=email_personal if not email_form else email_form,
                 password_hash=password_hash,
                 id_rol=id_rol,
                 activo=True,
-                id_personal=id_personal,
+                id_personal=id_personal, # Vínculo garantizado en la BaseDatosDiresa
                 fecha_creacion=datetime.utcnow()
             )
             
-            logger.info(f"Nuevo usuario creado: {username} (ID: {new_user.id})")
+            logger.info(f"Usuario {username} vinculado exitosamente al personal {id_personal}")
             
-            # Opcional: Enviar email de bienvenida
+            # 6. Envío opcional de bienvenida
             try:
-                self._email_service.send_user_welcome(email, username)
-                logger.info(f"Email de bienvenida enviado a {email}")
+                self._email_service.send_user_welcome(new_user.email, username)
             except Exception as e:
-                logger.warning(f"No se pudo enviar email de bienvenida a {email}: {e}")
+                logger.warning(f"No se pudo enviar email de bienvenida: {e}")
             
-            return f"Usuario '{username}' creado exitosamente", "success"
-            
+            return f"Usuario '{username}' y su legajo técnico fueron creados con éxito", "success"
+                
         except Exception as e:
-            logger.error(f"Error al crear usuario: {str(e)}")
-            return f"Error al crear usuario: {str(e)}", "danger"
+            logger.error(f"Error crítico en el servicio: {str(e)}")
+            return f"Error interno: {str(e)}", "danger"
         
 
     def get_current_2fa(self, user_id):

@@ -1,0 +1,93 @@
+{% extends 'layouts/dashboard.html' %}
+{% block title %}Detalle Récord Laboral - HMPP{% endblock %}
+
+{% block dashboard_content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h3 text-gray-800">
+            <i class="bi bi-person-badge text-primary"></i> Récord de Pagos: {{ persona.apellidos }}, {{ persona.nombres }}
+        </h1>
+        <a href="{{ url_for('legajo.listar_personal_para_record') }}" class="btn btn-secondary shadow-sm">
+            <i class="bi bi-arrow-left"></i> Volver a la Lista
+        </a>
+    </div>
+
+    <div class="card shadow mb-4 border-left-primary">
+        <div class="card-body py-3">
+            <div class="row align-items-center">
+                <div class="col-md-3">
+                    <span class="text-muted small font-weight-bold text-uppercase">DNI:</span><br>
+                    <strong class="text-dark h5">{{ persona.dni }}</strong>
+                </div>
+                <div class="col-md-6 border-left">
+                    <span class="text-muted small font-weight-bold text-uppercase">Unidad Administrativa:</span><br>
+                    <strong class="text-dark h5">{{ persona.nombre_unidad if persona.nombre_unidad else 'No especificada' }}</strong>
+                </div>
+                <div class="col-md-3 text-right">
+                    <span class="badge badge-info p-2 shadow-sm">
+                        <i class="bi bi-shield-check"></i> Consulta de Auditoría
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow mb-4">
+        <div class="card-header py-3 bg-dark text-white d-flex justify-content-between align-items-center">
+            <h6 class="m-0 font-weight-bold">Historial de Boletas de Pago Digitalizadas (Record Laboral - HMPP)</h6>
+            <small class="text-white-50">Total: {{ pagos|length }} registros</small>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="bg-light text-dark text-uppercase small font-weight-bold border-bottom">
+                        <tr>
+                            <th style="width: 20%;" class="px-4">REGISTRO (AUDITORÍA)</th>
+                            <th style="width: 30%;">ARCHIVO</th>
+                            <th>DESCRIPCIÓN</th>
+                            <th class="text-center" style="width: 15%;">ACCIÓN</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for pago in pagos %}
+                        <tr>
+                            <td class="px-4">
+                                <div class="text-primary font-weight-bold">
+                                    {{ pago.fecha_registro.strftime('%d/%m/%Y') if pago.fecha_registro else '--/--/----' }}
+                                </div>
+                                <small class="text-muted">
+                                    <i class="bi bi-clock"></i> {{ pago.fecha_registro.strftime('%H:%M:%S') if pago.fecha_registro else '--:--:--' }}
+                                </small>
+                            </td>
+                            <td>
+                                <i class="bi {{ 'bi-file-earmark-pdf text-danger' if '.pdf' in pago.nombre_archivo|lower else 'bi-file-earmark-excel text-success' }}"></i> 
+                                <span class="font-weight-bold small text-dark">{{ pago.nombre_archivo }}</span>
+                            </td>
+                            <td>
+                                <div class="font-weight-bold text-dark">{{ pago.descripcion or 'Sin descripción registrada' }}</div>
+                                <span class="badge badge-secondary mt-1">
+                                    Periodo Laboral: {{ pago.mes }} / {{ pago.anio }}
+                                </span>
+                            </td>
+                            <td class="text-center">
+                                <a href="{{ url_for('legajo.visualizar_boleta_record', id_record=pago.id_record) }}" 
+                                   class="btn btn-primary btn-sm px-3 shadow-sm font-weight-bold" target="_blank">
+                                    <i class="bi bi-eye-fill"></i> Visualizar
+                                </a>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="4" class="text-center py-5">
+                                <i class="bi bi-folder-x display-4 text-muted"></i>
+                                <p class="mt-2 italic text-muted">No se registran pagos digitalizados para este trabajador en el sistema de Pasco.</p>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

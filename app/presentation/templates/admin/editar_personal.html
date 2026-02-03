@@ -4,70 +4,130 @@
 {% block title %}Editar Legajo de {{ persona.nombres }} {{ persona.apellidos }}{% endblock %}
 
 {% block dashboard_content %}
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1 class="h3 mb-0">Editar Legajo</h1>
-        <a href="{{ url_for('legajo.ver_legajo', personal_id=persona.id_personal) }}" class="btn btn-secondary">
-            <i class="bi bi-x-circle me-1"></i> Cancelar y Volver
+<div style="max-width: 900px; margin: 0 auto;">
+    <ul class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{{ url_for('legajo.listar_personal') }}">Personal</a></li>
+        <li class="breadcrumb-item active">Editar Legajo</li>
+    </ul>
+
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+        <div>
+            <h1 style="margin: 0; font-size: 2rem; font-weight: 700; color: #1e3a8a;">
+                <i class="bi bi-pencil-square me-2"></i>Editar Legajo
+            </h1>
+            <p style="margin: 0.5rem 0 0 0; color: #6b7280;">
+                Editando a: <strong>{{ persona.nombres }} {{ persona.apellidos }}</strong>
+            </p>
+        </div>
+        <a href="{{ url_for('legajo.ver_legajo', personal_id=persona.id_personal) }}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> Volver al Legajo
         </a>
     </div>
 
-    <div class="card shadow-sm">
-        <div class="card-header bg-warning">
-            <h6 class="m-0 font-weight-bold text-dark">
-                <i class="bi bi-pencil-square me-2"></i>Editando a: {{ persona.nombres }} {{ persona.apellidos }} (DNI: {{ persona.dni }})
-            </h6>
+    <div class="card shadow-sm border-0">
+        <div class="card-header bg-primary text-white py-3">
+            <i class="bi bi-info-circle-fill me-2"></i> Información Actualizable del Personal
         </div>
-        <div class="card-body">
-            <form method="POST" novalidate>
+        <div class="card-body p-4">
+            <form method="POST" novalidate id="formEditar">
                 {{ form.hidden_tag() }}
 
+                <h5 class="mb-3 text-primary border-bottom pb-2">1. Datos de Identificación</h5>
                 <div class="row mb-3">
-                    <div class="col-md-6">
-                        {# El campo DNI ahora es de solo lectura para evitar cambios accidentales #}
-                        {{ render_field(form.dni, readonly=true, title="El DNI no se puede modificar.") }}
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">DNI (Campo Protegido)</label>
+                        {# 🚀 BLOQUEO: Se añade 'readonly' y clase 'bg-light' para indicar que no es editable #}
+                        {{ form.dni(class="form-control bg-light", readonly=True, id="dni") }}
+                        <div class="form-text small text-muted">
+                            <i class="bi bi-lock-fill"></i> El DNI no puede ser modificado.
+                        </div>
                     </div>
-                    <div class="col-md-6">
-                        {# El correo también se bloquea por ser un identificador único #}
-                        {{ render_field(form.email, readonly=true, title="El correo electrónico no se puede modificar.") }}
-                    </div>
-                </div>
-
-                <div class="row mb-3">
-                    <div class="col-md-6">
+                    <div class="col-md-4">
                         {{ render_field(form.nombres) }}
                     </div>
-                    <div class="col-md-6">
+                    <div class="col-md-4">
                         {{ render_field(form.apellidos) }}
                     </div>
                 </div>
 
+                <div class="row mb-4">
+                    <div class="col-md-4">
+                        {{ render_field(form.fecha_nacimiento, class="form-control datepicker") }}
+                    </div>
+                    <div class="col-md-4">
+                        {{ render_field(form.sexo) }}
+                    </div>
+                    <div class="col-md-4">
+                        {{ render_field(form.nacionalidad) }}
+                    </div>
+                </div>
+
+                <hr>
+                <h5 class="mb-3 mt-4 text-primary border-bottom pb-2">2. Datos de Contacto y Laborales</h5>
                 <div class="row mb-3">
-                    <div class="col-md-6">
-                        {{ render_field(form.telefono) }}
+                    <div class="col-md-4">
+                        {{ render_field(form.email) }}
                     </div>
                     <div class="col-md-6">
+                        <label class="form-label fw-bold">Email Personal</label>
+                        {# 🚀 Nuevo campo para eliminar el 'No especificado' #}
+                        <input type="email" name="email_personal" class="form-control" value="{{ persona.email_personal or '' }}" placeholder="personal@gmail.com">
+                    </div>
+                    <div class="col-md-4">
+                        {{ render_field(form.telefono) }}
+                    </div>
+                    <div class="col-md-4">
+                        {{ render_field(form.estado_civil) }}
+                    </div>
+                </div>
+
+                <div class="row mb-4">
+                    <div class="col-md-12">
                         {{ render_field(form.direccion) }}
                     </div>
                 </div>
 
-                <div class="row mb-3">
+                <div class="row mb-4">
                     <div class="col-md-6">
                         {{ render_field(form.id_unidad) }}
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold text-muted">Cargo Actual (Se define en Contratos)</label>
+                        <input type="text" class="form-control bg-light" value="Consulte el módulo de Contratos" readonly>
                     </div>
                     <div class="col-md-6">
                         {{ render_field(form.fecha_ingreso, class="form-control datepicker") }}
                     </div>
                 </div>
-                
+
                 <hr class="my-4">
 
                 <div class="d-flex justify-content-end">
-                    <button type="submit" class="btn btn-primary">
+                    <button type="submit" id="submit-btn" class="btn btn-primary px-5 shadow-sm">
                         <i class="bi bi-save-fill me-2"></i> Guardar Cambios
                     </button>
                 </div>
-
-                </form>
+            </form>
         </div>
     </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+/**
+ * Al estar el DNI bloqueado, la validación de duplicados en tiempo real 
+ * se omite ya que el valor es inmutable durante la edición.
+ */
+document.addEventListener('DOMContentLoaded', function () {
+    const submitBtn = document.getElementById('submit-btn');
+    const form = document.getElementById('formEditar');
+
+    // Mantenemos el botón habilitado por defecto ya que el DNI no cambiará
+    if (submitBtn) {
+        submitBtn.disabled = false;
+    }
+});
+</script>
 {% endblock %}

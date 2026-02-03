@@ -308,7 +308,7 @@ body {
     min-height: 100vh;
     background-color: var(--color-gris-oscuro);
     /* Asegúrate de que esta ruta sea correcta para tu imagen de fondo del login */
-    background-image: url('../img/diresa_fondo.jpg'); /* Usando background_institution.jpg como se estableció previamente */
+    background-image: url('../img/hmpp_fondo.jpg'); /* Usando background_institution.jpg como se estableció previamente */
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;

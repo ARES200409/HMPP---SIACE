@@ -9,6 +9,7 @@ from flask_login import LoginManager, current_user, login_required, logout_user
 from flask_wtf.csrf import CSRFProtect
 from flask_mail import Mail
 from app.presentation.routes.personal_routes import personal_bp
+from app.utils.error_handler import registrar_error_automatico
 
 
 # Seguridad: Importar las nuevas extensiones
@@ -34,6 +35,7 @@ from .infrastructure.persistence.sqlserver_repository import (
     SqlServerBackupRepository, 
     SqlServerSolicitudRepository 
 )
+
 
 # Inicialización de extensiones de Flask (sin la app)
 login_manager = LoginManager()
@@ -141,6 +143,9 @@ def create_app():
         content_security_policy_nonce_in=['script-src'],
         permissions_policy={},  # Ignorar browsing-topics de forma segura
     )
+    from app.presentation.routes.record_laboral_routes import record_laboral_bp
+    app.register_blueprint(record_laboral_bp)
+    
 
     # --- FILTRO DE PLANTILLA PARA ZONA HORARIA ---
     # Se define un filtro personalizado para Jinja2.
@@ -219,7 +224,7 @@ def create_app():
         app.config['BACKUP_SERVICE'] = BackupService(backup_repo, app.config, audit_service)
         app.config['SOLICITUDES_SERVICE'] = SolicitudService(solicitud_repo)
         
-        app.config['USUARIO_SERVICE'] = UsuarioService(usuario_repo, email_service)
+        app.config['USUARIO_SERVICE'] = UsuarioService(usuario_repo,personal_repo, email_service)
         app.config['AUDIT_SERVICE'] = audit_service
         app.config['LEGAJO_SERVICE'] = LegajoService(personal_repo, audit_service, app.config['USUARIO_SERVICE'])
         app.config['MONITORING_SERVICE'] = MonitoringService(personal_repo)
@@ -271,6 +276,14 @@ def create_app():
 
         # Se elimina la ruta /dashboard conflictiva.
         # La lógica de redirección ahora está centralizada en la ruta raíz ('/').
+
+
+        @app.errorhandler(Exception)
+        def handle_exception(e):
+            """Atrapa cualquier error en la HMPP y lo guarda en la BD."""
+            registrar_error_automatico(e)
+            # Retornamos 'e' para que Flask siga mostrando la página de error al usuario
+            return e
         
     return app
 

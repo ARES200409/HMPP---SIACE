@@ -1,59 +1,95 @@
-{#-
-  1. HERENCIA DIRECTA:
-  Heredamos directamente de tu plantilla de dashboard principal.
-  Esto asegura que siempre tendremos la barra lateral y el encabezado correctos.
--#}
 {% extends 'layouts/dashboard.html' %}
+{% block title %}Registro de Errores - HMPP{% endblock %}
 
-{#-
-  2. BLOQUE DE CONTENIDO CORRECTO:
-  Inyectamos todo el contenido de esta página en el bloque 'dashboard_content',
-  que es el que tu plantilla 'dashboard.html' espera.
--#}
 {% block dashboard_content %}
 <div class="container-fluid px-4">
     
-    <h1 class="mt-4 mb-4">Registro de Errores del Sistema</h1>
+    <div class="dashboard-header-titles mb-4">
+        <h2 class="section-title">REGISTRO DE ERRORES DEL SISTEMA</h2>
+        <h3 class="subsection-title">Monitoreo técnico y depuración en tiempo real</h3>
+    </div>
 
-    <div class="card shadow-sm">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <h5 class="mb-0">Historial de Errores Recientes</h5>
-            {# Este botón llama a la ruta de prueba que creamos en sistemas_routes.py #}
-            <a href="{{ url_for('sistemas.generar_error_prueba') }}" class="btn btn-outline-warning btn-sm">
-                <i class="bi bi-exclamation-triangle-fill me-2"></i>Generar Error de Prueba
-            </a>
+    <div class="card shadow-sm border-0">
+        <div class="card-header d-flex justify-content-between align-items-center bg-white py-3 border-bottom">
+            <h5 class="mb-0 text-primary fw-bold">
+                <i class="bi bi-bug-fill me-2"></i>Historial de Errores Recientes
+            </h5>
+            
+            <div class="d-flex gap-2">
+                {# Botón para validar captura de errores #}
+                <a href="{{ url_for('sistemas.generar_error_prueba') }}" class="btn btn-warning btn-sm shadow-sm fw-bold">
+                    <i class="bi bi-exclamation-triangle-fill me-1"></i> Generar Error de Prueba
+                </a>
+
+                {# 🚀 FORMULARIO CORREGIDO: Añadido CSRF Token para evitar Error 400 #}
+                <form action="{{ url_for('error.limpiar_logs') }}" method="POST" 
+                      onsubmit="return confirm('¿Estás seguro de ELIMINAR TODO el historial? Esta acción es irreversible.');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-danger btn-sm shadow-sm fw-bold">
+                        <i class="bi bi-trash-fill me-1"></i> Limpiar Todos los Logs
+                    </button>
+                </form>
+            </div>
         </div>
+        
         <div class="card-body">
-            <p class="card-text text-muted mb-4">
-                A continuación se muestran los últimos errores registrados por la aplicación.
-            </p>
+            <div class="alert alert-light border-0 small text-muted mb-4 shadow-sm">
+                <i class="bi bi-info-circle-fill text-primary me-2"></i>
+                Esta tabla registra fallos técnicos automáticos. Use la ubicación y línea para identificar el código que necesita mantenimiento.
+            </div>
 
             <div class="table-responsive">
-                <table class="table table-bordered table-hover align-middle">
-                    <thead class="table-light">
+                <table class="table table-hover align-middle border">
+                    <thead class="table-dark small text-uppercase">
                         <tr>
-                            <th scope="col">Fecha y Hora</th>
-                            <th scope="col">Módulo / Ruta</th>
-                            <th scope="col">Mensaje de Error</th>
-                            <th scope="col">Usuario</th>
+                            <th scope="col" style="width: 15%;">Fecha y Hora</th>
+                            <th scope="col" style="width: 25%;">Módulo / Ubicación</th>
+                            <th scope="col">Detalle del Error</th>
+                            <th scope="col" style="width: 15%;">Usuario</th>
                         </tr>
                     </thead>
-                    <tbody>
-                        {# --- Bucle de Jinja que muestra los errores REALES que vienen desde Python --- #}
+                    <tbody class="small">
                         {% for error in errores %}
                         <tr>
-                            {# Formateamos la fecha para que se vea amigable #}
-                            <td>{{ error.fecha_hora.strftime('%d/%m/%Y %H:%M:%S') }}</td>
-                            <td>{{ error.modulo }}</td>
-                            <td><small>{{ error.descripcion }}</small></td>
-                            {# Si no hay un usuario asociado (ej. error del sistema), muestra 'Sistema' #}
-                            <td>{{ error.usuario or 'Sistema' }}</td>
+                            <td class="text-nowrap fw-bold text-secondary">
+                                {{ error.fecha_hora.strftime('%d/%m/%Y %H:%M:%S') if error.fecha_hora else '--/--/---- --:--' }}
+                            </td>
+                            
+                            <td>
+                                <span class="d-block fw-bold text-primary">{{ error.modulo }}</span>
+                                <small class="text-muted d-block">
+                                    <i class="bi bi-file-earmark-code me-1"></i>{{ error.archivo }} 
+                                    <span class="badge bg-danger-subtle text-danger ms-1">Lín: {{ error.linea }}</span>
+                                </small>
+                            </td>
+                            
+                            <td>
+                                <div class="mb-1">
+                                    <span class="badge bg-danger text-white border-0">
+                                        {{ error.tipo_error }}
+                                    </span>
+                                </div>
+                                <div class="text-dark bg-light p-2 rounded border" style="max-height: 80px; overflow-y: auto; font-family: monospace; font-size: 0.85rem;">
+                                    {{ error.mensaje }}
+                                </div>
+                            </td>
+                            
+                            <td>
+                                <div class="d-flex align-items-center">
+                                    <i class="bi bi-person-circle me-2 text-secondary"></i>
+                                    <span class="fw-bold">{{ error.usuario or 'Sistema' }}</span>
+                                </div>
+                            </td>
                         </tr>
                         {% else %}
-                        {# Este bloque se muestra si la lista 'errores' está vacía #}
+                        {# Estado vacío: Ideal para cuando el sistema en Pasco está estable #}
                         <tr>
-                            <td colspan="4" class="text-center text-muted fst-italic py-4">
-                                ¡Felicidades! No hay registros de errores disponibles.
+                            <td colspan="4" class="text-center py-5">
+                                <div class="py-4">
+                                    <i class="bi bi-check-circle-fill text-success d-block mb-3" style="font-size: 3rem;"></i>
+                                    <h5 class="text-success fw-bold">¡Sistema Estable!</h5>
+                                    <p class="text-muted">Felicidades, HMPP. No se han detectado errores técnicos recientemente.</p>
+                                </div>
                             </td>
                         </tr>
                         {% endfor %}

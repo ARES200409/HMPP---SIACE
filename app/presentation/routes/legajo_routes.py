@@ -3,17 +3,46 @@
 
 import io
 import mimetypes
+import os
 import pyodbc
 from flask import Blueprint, jsonify, render_template, redirect, send_file, url_for, flash, request, current_app
 from flask_login import login_required, current_user
 from app.decorators import role_required
-from app.application.forms import PersonalForm, DocumentoForm, FiltroPersonalForm, BulkUploadForm,ContratoInicialForm
+from app.application.forms import PersonalForm, DocumentoForm, FiltroPersonalForm, BulkUploadForm, ContratoInicialForm
 from app.application.services.file_validation_service import FileValidationService
 from app.domain.models.personal import Personal
+from app.domain.models.usuario import Usuario
 from app.core.security import IDORProtection
 from datetime import datetime
+from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash
+
 legajo_bp = Blueprint('legajo', __name__, url_prefix='/legajo')
+
+
+# --- CLASE AUXILIAR PARA PAGINACIÓN (Sincronizada con el HTML) ---
+class RecordPagination:
+    def __init__(self, items, page, per_page, total):
+        self.items = items
+        self.page = page
+        self.per_page = per_page
+        self.total = total
+        self.pages = (total + per_page - 1) // per_page
+        self.has_prev = page > 1
+        self.has_next = page < self.pages
+        self.prev_num = page - 1
+        self.next_num = page + 1
+
+    def iter_pages(self, left_edge=1, left_current=2, right_current=2, right_edge=1):
+        last = 0
+        for num in range(1, self.pages + 1):
+            if num <= left_edge or \
+               (num > self.page - left_current - 1 and num < self.page + right_current + 1) or \
+               num > self.pages - right_edge:
+                if last + 1 != num:
+                    yield None
+                yield num
+                last = num
 
 @legajo_bp.route('/personal/carga_masiva', methods=['GET', 'POST'])
 @login_required
@@ -34,6 +63,8 @@ def carga_masiva_personal():
 
             return redirect(url_for('legajo.listar_personal'))
         except Exception as e:
+            from app.utils.error_handler import registrar_error_automatico
+            registrar_error_automatico(e)
             current_app.logger.error(f"Error crítico en carga masiva: {e}")
             flash(f"Ocurrió un error inesperado al procesar el archivo: {e}", 'danger')
 
@@ -176,6 +207,7 @@ def ver_legajo(personal_id):
         today=datetime.now().date()
     )
 
+
 @legajo_bp.route('/personal')
 @login_required
 @role_required('AdministradorLegajos', 'RRHH', 'Sistemas')
@@ -185,15 +217,22 @@ def listar_personal():
     filters = {'dni': form.dni.data, 'nombres': form.nombres.data}
     
     legajo_service = current_app.config['LEGAJO_SERVICE']
-    pagination = legajo_service.get_all_personal_paginated(page, 15, filters)
     
-    # Nueva lógica para obtener el estado de los documentos
-    document_status = legajo_service.check_document_status_for_all_personal()
-    
-    return render_template('admin/listar_personal.html', 
-                           form=form, 
-                           pagination=pagination,
-                           document_status=document_status)
+    try:
+        pagination = legajo_service.get_all_personal_paginated(page, 15, filters)
+        document_status = legajo_service.check_document_status_for_all_personal()
+        
+        # 🚀 RETORNO SEGURO
+        return render_template('admin/listar_personal.html', 
+                               form=form, 
+                               pagination=pagination,
+                               document_status=document_status)
+
+    except Exception as e:
+        # Registramos el error pero NO redirigimos para no crear el bucle
+        current_app.logger.error(f"Error en listar_personal: {str(e)}")
+        # Devolvemos un mensaje de error directo en lugar de un redirect
+        return f"Error crítico de renderizado: {str(e)}. Revisa los argumentos 'page' en el HTML.", 500
 
 @legajo_bp.route('/personal/nuevo', methods=['GET', 'POST'])
 @login_required
@@ -210,8 +249,10 @@ def crear_personal():
             
             flash('Paso 1 completado: Datos personales registrados.', 'success')
             
-            # 2. REDIRECCIONAR AL PASO 2 (Contrato Inicial)
-            return redirect(url_for('legajo.completar_legajo', personal_id=new_personal_id))
+            # 🚀 CAMBIO: Ya no va al 'completar_legajo'. 
+            # Ahora regresa a la lista con un aviso de "Pendiente de Contrato".
+            flash('Legajo registrado exitosamente. Ahora RRHH debe asignar el contrato inicial.', 'success')
+            return redirect(url_for('legajo.listar_personal'))
             
         except Exception as e:
             # ... (manejo de errores igual que antes) ...
@@ -228,7 +269,6 @@ from app.domain.models.usuario import Usuario, ROL_ID_PERSONAL
 @login_required
 @role_required('AdministradorLegajos')
 def completar_legajo(personal_id):
-    """Paso 2: Registrar contrato y auto-crear usuario para el empleado."""
     legajo_service = current_app.config['LEGAJO_SERVICE']
     repo = legajo_service._personal_repo 
     
@@ -238,50 +278,51 @@ def completar_legajo(personal_id):
         return redirect(url_for('legajo.listar_personal'))
 
     form = ContratoInicialForm()
+    # Carga de catálogos
     form.id_tipo_contrato.choices = [('', '-- Seleccione Tipo --')] + repo.get_tipos_contrato_for_select()
     form.id_cargo.choices = [('', '-- Seleccione Cargo --')] + repo.get_cargos_for_select()
     form.id_unidad.choices = [('', '-- Seleccione Unidad --')] + repo.get_unidades_for_select()
 
+    # 🚀 AUTOMATIZACIÓN: Pre-seleccionar la unidad de la persona (Paso 1)
+    if request.method == 'GET':
+        form.id_unidad.data = str(persona.id_unidad) # Esto quita la molestia de elegir de nuevo
+
     if form.validate_on_submit():
         try:
-            # 1. Registrar contrato y cargo en SQL Server
+            # 1. Registrar contrato y cargo
             data = form.data
             data['id_personal'] = personal_id
+            
+            # 🚀 IMPORTANTE: Sincronizamos el nombre de la resolución
+            data['resolucion'] = data.get('numero_resolucion') 
+            
             repo.registrar_contrato_inicial(data)
             
-            # ==========================================================
-            # 🚀 CREACIÓN AUTOMÁTICA DE ACCESO (DNI = USUARIO Y CLAVE)
-            # ==========================================================
+            # 2. Creación de Acceso Automático
             dni_empleado = persona.dni.strip()
-            
-            # Verificamos si ya existe el usuario para no duplicar
             usuario_existente = legajo_service.get_usuario_por_username(dni_empleado)
             
             if not usuario_existente:
-                # Creamos el objeto de dominio Usuario
+                from werkzeug.security import generate_password_hash
+                # Asumimos que ROL_ID_PERSONAL está definido como 5
                 nuevo_acceso = Usuario(
                     id_usuario=None,
                     username=dni_empleado,
-                    id_rol=ROL_ID_PERSONAL, # Forzamos el ID 5
+                    id_rol=5, 
                     email=persona.email,
-                    # El DNI se encripta como contraseña inicial
                     password_hash=generate_password_hash(dni_empleado),
                     id_personal=personal_id,
                     activo=True,
                     nombre_rol='Personal'
                 )
-                
-                # Guardamos el usuario a través del servicio
                 legajo_service.crear_usuario_acceso(nuevo_acceso)
-                current_app.logger.info(f"Acceso creado: {dni_empleado} con Rol 5.")
-            # ==========================================================
             
-            flash('¡Legajo y acceso web creados exitosamente!', 'success')
+            flash('¡Legajo y contrato activados exitosamente!', 'success')
             return redirect(url_for('legajo.ver_legajo', personal_id=personal_id))
             
         except Exception as e:
-            current_app.logger.error(f"Error en Paso 2 para ID {personal_id}: {e}")
-            flash('Error al procesar el contrato o el acceso del usuario.', 'danger')
+            current_app.logger.error(f"Error crítico en Paso 2: {str(e)}")
+            flash(f'Error al procesar: {str(e)}', 'danger')
 
     return render_template('admin/completar_legajo.html', form=form, persona=persona)
 
@@ -333,7 +374,12 @@ def subir_documento(personal_id):
             archivo = form.archivo.data
             is_valid, error_message = FileValidationService.validate_file(archivo)
             if not is_valid:
-                current_app.logger.warning(f"SEGURIDAD: Intento de subir archivo inválido - {archivo.filename} - Error: {error_message} - Usuario: {current_user.username}")
+                from app.utils.error_handler import registrar_error_automatico
+                try:
+                    raise ValueError(f"BLOQUEO DE SEGURIDAD: Intento de subir {archivo.filename} (Tipo no permitido)")
+                except ValueError as ve:
+                    registrar_error_automatico(ve)
+                    current_app.logger.warning(f"SEGURIDAD: Intento de subir archivo inválido - {archivo.filename} - Error: {error_message} - Usuario: {current_user.username}")
                 flash(error_message or 'El archivo no es válido o contiene código malicioso.', 'danger')
                 return redirect(url_for('legajo.ver_legajo', personal_id=personal_id))
             
@@ -346,6 +392,8 @@ def subir_documento(personal_id):
             current_app.logger.warning(f"Error de validación al subir documento para personal {personal_id}: {ve}")
             flash(str(ve), 'danger')
         except Exception as e:
+            from app.utils.error_handler import registrar_error_automatico
+            registrar_error_automatico(e)
             current_app.logger.error(f"Error inesperado al subir documento para personal {personal_id}: {e}")
             flash(f'Ocurrió un error inesperado al subir el documento.', 'danger')
     else:
@@ -411,28 +459,49 @@ def reactivar_personal(personal_id):
 def editar_personal(personal_id):
     legajo_service = current_app.config['LEGAJO_SERVICE']
     
-    # Se pasa current_user para validaciones de seguridad en el servicio
+    # 1. Obtener datos actuales del personal
     legajo_data = legajo_service.get_personal_details(personal_id, current_user)
     if not legajo_data or not legajo_data.get('personal'):
         flash('El legajo que intenta editar no existe.', 'danger')
         return redirect(url_for('legajo.listar_personal'))
 
     persona_data = legajo_data['personal']
-    
+
     form = PersonalForm(data=persona_data)
     form.id_unidad.choices = [('0', '-- Seleccione Unidad --')] + legajo_service.get_unidades_for_select()
     
     if request.method == 'GET':
-        form.id_unidad.data = persona_data.get('id_unidad')
+        form.id_unidad.data = str(persona_data.get('id_unidad', '0'))
 
     if form.validate_on_submit():
         try:
+            nuevo_dni = form.dni.data
+            
+            # 🚀 VALIDACIÓN CRÍTICA: ¿El DNI ya lo tiene otro trabajador?
+            # Usamos el nuevo método del repositorio que ignora el ID actual
+            if legajo_service._personal_repo.existe_dni_en_otros(nuevo_dni, personal_id):
+                flash(f'¡BLOQUEO DE INTEGRIDAD! El DNI {nuevo_dni} ya está registrado a nombre de otro trabajador.', 'danger')
+                return render_template('admin/editar_personal.html', form=form, persona=persona_data, titulo="Editar Legajo")
+
+            # 2. Si pasa la validación, procedemos a actualizar
             legajo_service.update_personal_details(personal_id, form.data, current_user.id)
-            flash('Legajo actualizado exitosamente.', 'success')
+            
+            flash('Legajo actualizado correctamente en la base de datos.', 'success')
             return redirect(url_for('legajo.ver_legajo', personal_id=personal_id))
+            
         except Exception as e:
+            # 🚀 REGISTRO AUTOMÁTICO: Para que aparezca en tu tabla de errores
+            from app.utils.error_handler import registrar_error_automatico
+            registrar_error_automatico(e)
+            
             current_app.logger.error(f"Error al actualizar legajo {personal_id}: {e}")
-            flash('Ocurrió un error al actualizar el legajo.', 'danger')
+            flash(f'Error técnico detectado: {str(e)}', 'danger')
+    
+    # Manejo de errores de validación del formulario (ej. campos vacíos)
+    if request.method == 'POST' and not form.validate_on_submit():
+        for field, errors in form.errors.items():
+            for error in errors:
+                flash(f"Campo '{getattr(form, field).label.text}': {error}", 'warning')
             
     return render_template('admin/editar_personal.html', form=form, persona=persona_data, titulo="Editar Legajo")
 
@@ -661,3 +730,163 @@ def ver_archivo_propuesto(solicitud_id):
     except Exception as e:
         current_app.logger.error(f"Error visualizando archivo propuesto: {e}")
         return "Error al visualizar archivo", 404
+    
+
+
+# --- 🚀 RUTA CORREGIDA: CONSULTA DE RÉCORD (MODO LECTURA) ---
+
+@legajo_bp.route('/personal/consultar-record', methods=['GET'])
+@login_required
+@role_required('AdministradorLegajos')
+def listar_personal_para_record():
+    """
+    Lista el personal con Cargo, Sueldo y Contrato para el Administrador de Escalafón.
+    """
+    form = FiltroPersonalForm(request.args)
+    page = request.args.get('page', 1, type=int)
+    per_page = 15
+    
+    legajo_service = current_app.config['LEGAJO_SERVICE']
+    repo = legajo_service._personal_repo 
+    
+    try:
+        # 1. Llamamos a la función que trae los datos completos (Sueldo, Cargo, Contrato)
+        # 🚀 Esto elimina el 'S/N' y los campos vacíos
+        items, total = repo.get_personal_para_escalafon(
+            page=page, 
+            per_page=per_page, 
+            dni=form.dni.data, 
+            nombres=form.nombres.data
+        )
+        
+        # 2. Creamos el objeto de paginación corregido
+        pagination = RecordPagination(items, page, per_page, total)
+        
+        # 3. Renderizamos la plantilla de Escalafón
+        return render_template('admin/listar_record_escalafon.html',
+                               form=form, 
+                               pagination=pagination)
+
+    except Exception as e:
+        from app.utils.error_handler import registrar_error_automatico
+        registrar_error_automatico(e)
+        current_app.logger.error(f"Error en consulta de record escalafon: {str(e)}")
+        flash(f"Error al cargar los datos: {str(e)}", "danger")
+        return redirect(url_for('legajo.dashboard'))
+
+
+@legajo_bp.route('/record-laboral/descargar/<int:id_record>')
+@login_required
+@role_required('AdministradorLegajos', 'RRHH') # <--- Ambos pueden descargar
+def download_record(id_record):
+    """
+    Permite al Escalafón descargar las planillas cargadas por RRHH.
+    """
+    try:
+        legajo_service = current_app.config['LEGAJO_SERVICE']
+        # Recuperamos el binario desde la tabla record_laboral
+        document = legajo_service._personal_repo.get_record_file_by_id(id_record)
+        
+        if not document:
+            flash('La boleta de pago no existe.', 'danger')
+            return redirect(request.referrer)
+
+        return send_file(
+            io.BytesIO(document['contenido']),
+            as_attachment=True,
+            download_name=document['nombre_archivo'],
+            mimetype='application/pdf'
+        )
+    except Exception as e:
+        current_app.logger.error(f"Error descargando record {id_record}: {e}")
+        flash("Error al procesar la descarga.", "danger")
+        return redirect(request.referrer)
+    
+
+# --- RUTA PARA VISUALIZAR EXCLUSIVAMENTE EL RÉCORD LABORAL ---
+
+# --- RUTAS DE RÉCORD LABORAL (VERSIÓN FINAL) ---
+
+@legajo_bp.route('/personal/record-laboral/ver/<int:personal_id>')
+@login_required
+@role_required('AdministradorLegajos', 'RRHH', 'Sistemas')
+def ver_record_laboral_detalle(personal_id):
+    """
+    Carga la ficha de pagos. 
+    FIX: Sincroniza la Unidad Administrativa para evitar el 'None'.
+    """
+    try:
+        legajo_service = current_app.config['LEGAJO_SERVICE']
+        legajo_completo = legajo_service.get_personal_details(personal_id, current_user)
+        
+        if not legajo_completo or not legajo_completo.get('personal'):
+            flash('No se encontró el registro del trabajador.', 'danger')
+            return redirect(url_for('legajo.listar_personal_para_record'))
+
+        persona = legajo_completo['personal']
+        
+        # 🚀 PARCHE UNIVERSAL: Buscamos el nombre de la unidad en todos los alias posibles
+        # Si el SQL devuelve 'unidad_administrativa', 'nombre_unidad' o 'unidad', lo capturamos.
+        unidad_nombre = persona.get('nombre_unidad') or persona.get('unidad_administrativa') or persona.get('unidad')
+        
+        # Lo guardamos en la llave que usa el HTML
+        persona['nombre_unidad'] = unidad_nombre if unidad_nombre else "No especificada"
+
+        return render_template(
+            'admin/ver_record_laboral_detalle.html',
+            persona=persona,
+            pagos=legajo_completo.get('record_laboral', [])
+        )
+    except Exception as e:
+        current_app.logger.error(f"Error al cargar historial de pagos para {personal_id}: {e}")
+        flash("Ocurrió un error al cargar el récord laboral.", "danger")
+        return redirect(url_for('legajo.listar_personal_para_record'))
+
+# --- GESTIÓN DE DOCUMENTOS Y DESCARGAS ---
+
+
+
+@legajo_bp.route('/record-laboral/visualizar/<int:id_record>')
+@login_required
+@role_required('AdministradorLegajos', 'RRHH', 'Personal')
+def visualizar_boleta_record(id_record):
+    """
+    Detecta automáticamente si es PDF (visualiza) o Excel (descarga).
+    """
+    try:
+        legajo_service = current_app.config['LEGAJO_SERVICE']
+        document = legajo_service._personal_repo.get_record_file_by_id(id_record)
+        
+        if not document or not document.get('contenido'):
+            flash('La boleta no fue encontrada en el servidor.', 'danger')
+            return redirect(request.referrer)
+
+        filename = document.get('nombre_archivo', 'archivo_boleta')
+        # 🚀 DETECCIÓN DE TIPO: Usamos mimetypes para saber qué es el archivo
+        mimetype, _ = mimetypes.guess_type(filename)
+        if not mimetype:
+            mimetype = 'application/octet-stream'
+
+        # 🚀 LÓGICA DE DESCARGA: Solo visualizamos si es PDF; todo lo demás se descarga
+        is_pdf = mimetype == 'application/pdf'
+        
+        return send_file(
+            io.BytesIO(document['contenido']),
+            mimetype=mimetype,
+            as_attachment=not is_pdf, # Si NO es PDF, as_attachment será True (Descarga)
+            download_name=filename
+        )
+    except Exception as e:
+        current_app.logger.error(f"Error procesando boleta {id_record}: {e}")
+        return "Error al procesar el archivo", 404
+    
+
+
+@legajo_bp.route('/api/personal/check_dni/<dni>', methods=['GET'])
+@login_required
+def check_dni_api(dni):
+    """API que responde si un DNI ya existe en la municipalidad."""
+    legajo_service = current_app.config['LEGAJO_SERVICE']
+    # Usamos tu método existente del repositorio
+    existe = legajo_service._personal_repo.check_dni_exists(dni)
+    return jsonify({'exists': existe})

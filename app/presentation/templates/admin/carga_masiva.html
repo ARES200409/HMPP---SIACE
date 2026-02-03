@@ -1,53 +1,76 @@
 {% extends 'layouts/dashboard.html' %}
 {% from "components/_form_helpers.html" import render_field %}
 
-{% block title %}Carga Masiva de Personal{% endblock %}
+{% block title %}Carga Masiva de Personal - HMPP{% endblock %}
 
 {% block dashboard_content %}
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1 class="h3 mb-0">Carga Masiva de Personal desde Excel</h1>
-        <a href="{{ url_for('legajo.listar_personal') }}" class="btn btn-secondary">
+        <h1 class="h3 mb-0">
+            <i class="bi bi-file-earmark-excel text-success me-2"></i>Carga Masiva de Personal desde Excel
+        </h1>
+        <a href="{{ url_for('legajo.listar_personal') }}" class="btn btn-secondary shadow-sm">
             <i class="bi bi-arrow-left-circle me-1"></i> Volver a la Lista
         </a>
     </div>
 
     {% include 'components/_alerts.html' %}
 
-    <div class="card shadow-sm">
-        <div class="card-header">
-            <h5 class="card-title mb-0">Instrucciones</h5>
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-header bg-white py-3">
+            <h5 class="card-title mb-0 text-primary fw-bold">
+                <i class="bi bi-info-circle me-2"></i>Instrucciones de Uso
+            </h5>
         </div>
         <div class="card-body">
-            <p>Siga estos pasos para registrar múltiples trabajadores a la vez:</p>
-            <ol>
-                <li>
-                    Descargue la plantilla de Excel haciendo clic en el siguiente botón.
+            <p class="text-muted">Siga estos pasos para registrar múltiples trabajadores de forma masiva en el sistema:</p>
+            <ol class="mb-4">
+                <li class="mb-2">
+                    <strong>Descargue la plantilla oficial</strong> haciendo clic en el botón verde.
                     <br>
-                    <a href="{{ url_for('legajo.descargar_plantilla_carga_masiva') }}" class="btn btn-sm btn-success mt-2">
-                        <i class="bi bi-file-earmark-excel-fill me-1"></i> Descargar Plantilla
+                    <a href="{{ url_for('legajo.descargar_plantilla_carga_masiva') }}" class="btn btn-sm btn-success mt-2 shadow-sm">
+                        <i class="bi bi-download me-1"></i> Descargar Plantilla Excel
                     </a>
                 </li>
-                <li>Llene la plantilla con los datos de los trabajadores. <strong>No cambie el nombre de las columnas.</strong></li>
-                <li>Guarde el archivo y súbalo usando el formulario a continuación.</li>
-                <li>El sistema procesará el archivo y le informará del resultado.</li>
+                <li class="mb-2">Complete la información de los trabajadores. <strong>No modifique ni elimine el nombre de las columnas originales.</strong></li>
+                <li class="mb-2">Guarde el archivo en su computadora y súbalo usando el formulario inferior.</li>
+                <li>El sistema validará los datos y le mostrará un resumen del procesamiento.</li>
             </ol>
-            <p class="text-danger small">
-                <strong>Importante:</strong> Los campos DNI, Nombres, Apellidos, Sexo, Fecha de Nacimiento, Correo, Unidad Administrativa y Fecha de Ingreso son obligatorios.
-                Las fechas deben tener el formato <strong>YYYY-MM-DD</strong>.
-            </p>
+            
+            <div class="alert alert-warning border-0 shadow-sm mb-0">
+                <p class="mb-1"><strong><i class="bi bi-exclamation-triangle-fill me-2"></i>Requisitos de Datos:</strong></p>
+                <ul class="small mb-0">
+                    <li>Campos obligatorios: <b>DNI, Nombres, Apellidos, Sexo, Fecha de Nacimiento, Correo, Unidad Administrativa y Fecha de Ingreso</b>.</li>
+                    <li>Formato de fecha requerido: <code class="fw-bold text-danger">YYYY-MM-DD</code> (Ejemplo: 1990-05-15).</li>
+                    <li>El DNI debe contener exactamente 8 dígitos numéricos.</li>
+                </ul>
+            </div>
         </div>
     </div>
 
-    <div class="card shadow-sm mt-4">
-        <div class="card-header">
-            <h5 class="card-title mb-0">Subir Archivo</h5>
+    <div class="card shadow-sm border-0">
+        <div class="card-header bg-light py-3">
+            <h5 class="card-title mb-0 fw-bold">
+                <i class="bi bi-cloud-arrow-up-fill me-2"></i>Subir Archivo de Personal
+            </h5>
         </div>
-        <div class="card-body">
-            <form method="POST" enctype="multipart/form-data" novalidate>
+        <div class="card-body py-4">
+            <form method="POST" enctype="multipart/form-data" novalidate id="uploadForm">
+                {# Token de seguridad CSRF - Previene Error 400 #}
                 {{ form.hidden_tag() }}
-                {{ render_field(form.excel_file) }}
-                <div class="mt-3">
-                    {{ form.submit(class="btn btn-primary") }}
+                
+                <div class="row">
+                    <div class="col-md-8">
+                        {{ render_field(form.excel_file, class="form-control form-control-lg") }}
+                        <div class="form-text text-muted mt-2"> Solo se permiten archivos con extensión .xlsx o .xls</div>
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-2 border-top">
+                    {# 🚀 BOTÓN CORREGIDO: Con feedback visual y bloqueo de doble clic #}
+                    {{ form.submit(
+                        class="btn btn-primary btn-lg px-5 shadow", 
+                        onclick="this.innerHTML='<span class=\"spinner-border spinner-border-sm\" role=\"status\" aria-hidden=\"true\"></span> Procesando Excel...'; this.classList.add('disabled');"
+                    ) }}
                 </div>
             </form>
         </div>

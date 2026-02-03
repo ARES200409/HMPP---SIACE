@@ -1,12 +1,18 @@
-from flask import Blueprint, render_template, request, current_app, flash, redirect, url_for, send_file, jsonify
+from flask import Blueprint, render_template, request, current_app, flash, redirect, url_for, send_file, jsonify, abort
 from flask_login import login_required, current_user
 from app.decorators import role_required
 from app.application.forms import UserManagementForm
 import io
-from datetime import datetime
+from datetime import datetime, timedelta
+from app.infrastructure.persistence.error_repository import ErrorRepository 
 
-# Importamos el repositorio para los errores y backups
-from app.infrastructure.persistence.sqlserver_repository import SqlServerBackupRepository
+
+# CORRECCIÓN DEFINITIVA DE LA BASE DE DATOS
+# Importamos la conexión desde la ruta real que vimos en estructura_repository.py
+from app.database.connector import get_db_write as db 
+
+# Importamos los repositorios necesarios
+from app.infrastructure.persistence.sqlserver_repository import SqlServerBackupRepository, SqlServerPersonalRepository
 
 sistemas_bp = Blueprint('sistemas', __name__) 
 
@@ -41,6 +47,12 @@ def auditoria():
 def gestionar_usuarios():
     usuario_service = current_app.config['USUARIO_SERVICE']
     usuarios = usuario_service.get_all_users_with_roles() 
+    
+    # Ajuste para que '15:32' baje a '12:32' (Hora Real Pasco)
+    for user in usuarios:
+        if hasattr(user, 'last_login') and user.last_login:
+            user.last_login = user.last_login - timedelta(hours=5)
+            
     return render_template('sistemas/gestionar_usuarios.html', usuarios=usuarios)
 
 
@@ -49,6 +61,8 @@ def gestionar_usuarios():
 @role_required('Sistemas')
 def crear_usuario():
     form = UserManagementForm() 
+    
+    # Carga de roles para el selector del formulario
     try:
         repo = current_app.config['USUARIO_REPOSITORY']
         roles = repo.get_all_roles()
@@ -57,33 +71,51 @@ def crear_usuario():
         current_app.logger.warning(f"Error al cargar roles: {e}")
     
     if form.validate_on_submit():
+        # --- VALIDACIONES DE SEGURIDAD ---
         if not form.username.data or not form.username.data.strip():
             form.username.errors = ('El nombre de usuario es requerido.',)
             return render_template('sistemas/crear_usuario.html', form=form)
+        
         if not form.email.data or not form.email.data.strip():
             form.email.errors = ('El correo electrónico es requerido.',)
             return render_template('sistemas/crear_usuario.html', form=form)
-        if not form.password.data or not form.password.data.strip():
-            form.password.errors = ('La contraseña es requerida.',)
-            return render_template('sistemas/crear_usuario.html', form=form)
+            
         if not form.id_rol.data or form.id_rol.data == 0:
             form.id_rol.errors = ('Debe seleccionar un rol.',)
             return render_template('sistemas/crear_usuario.html', form=form)
-        
+
         try:
             usuario_service = current_app.config['USUARIO_SERVICE']
-            mensaje, tipo = usuario_service.create_user(form.data)
+            
+            # 1. PREPARACIÓN DE DATOS (Diccionario editable)
+            # Extraemos los datos del formulario para poder manipularlos antes de guardar
+            datos_usuario = form.data.copy()
+            
+            # 2. TRANSFORMACIÓN A MINÚSCULAS
+            # Aseguramos que el usuario se guarde como 'junior_1' y no 'Junior_1'
+            datos_usuario['username'] = datos_usuario['username'].lower().strip()
+            
+            # 3. VERIFICACIÓN DE NOMBRE COMPLETO
+            # 'nombre_completo' ya viaja en datos_usuario porque lo añadimos al Form
+            if not datos_usuario.get('nombre_completo'):
+                current_app.logger.warning("Intento de crear usuario sin nombre completo.")
+
+            # 4. EJECUCIÓN DEL SERVICIO
+            # Pasamos el diccionario procesado al servicio de la municipalidad
+            mensaje, tipo = usuario_service.create_user(datos_usuario)
+            
             flash(mensaje, tipo)
             
-            # Si la creación fue exitosa, redirigir a la lista de usuarios
             if tipo == 'success':
+                # Redirección exitosa al panel de gestión
                 return redirect(url_for('sistemas.gestionar_usuarios'))
-            # Si no fue exitosa (warning/danger), mantener el formulario
             else:
                 return render_template('sistemas/crear_usuario.html', form=form)
+
         except Exception as e:
-            current_app.logger.error(f"Error al crear usuario: {str(e)}")
+            current_app.logger.error(f"Error crítico al crear usuario: {str(e)}")
             flash(f'Error al crear usuario: {str(e)}', 'danger')
+
     return render_template('sistemas/crear_usuario.html', form=form)
 
 
@@ -164,6 +196,26 @@ def reset_password(user_id):
     return redirect(url_for('sistemas.gestionar_usuarios'))
 
 
+
+@sistemas_bp.route('/usuarios/cambiar_estado/<int:personal_id>', methods=['POST'])
+@login_required
+# Acceso total para los tres roles institucionales
+@role_required('Sistemas', 'RRHH', 'AdministradorLegajos')
+def cambiar_estado_desde_sistemas(personal_id):
+    data = request.get_json()
+    nuevo_estado = data.get('estado')
+
+    try:
+        conn = db() # get_db_write as db
+        cursor = conn.cursor()
+        # Sincronización por ID (evita fallos de DNI)
+        cursor.execute("EXEC sp_cambiar_estado_laboral ?, ?", (personal_id, nuevo_estado))
+        conn.commit()
+        return jsonify({'success': True, 'message': 'Sincronización completada.'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
 # ------------------------------------------------------------------------
 # 3. MANTENIMIENTO TÉCNICO Y BACKUPS
 # ------------------------------------------------------------------------
@@ -212,34 +264,47 @@ def estado_servidor():
     
     return render_template('sistemas/estado_servidor.html', **metrics)
 
+
 @sistemas_bp.route('/errores')
 @login_required
-@role_required('Sistemas')
+@role_required('Sistemas') # Mantenlo si ya tienes el decorador funcionando
 def errores():
+    """
+    Carga el historial real de fallos técnicos desde la instancia OSCAR.
+    """
     try:
-        repo = SqlServerBackupRepository()
-        lista_de_errores = repo.obtener_historial_errores()
+        # 🚀 Usamos el repositorio específico de errores para obtener los datos REALES
+        repo = ErrorRepository() 
+        lista_de_errores = repo.obtener_todos() # Este método debe devolver archivo, linea, etc.
+        
         return render_template('sistemas/registro_errores.html', errores=lista_de_errores)
+    
     except Exception as e:
-        current_app.logger.error(f"No se pudo cargar el historial de errores: {e}")
-        flash(f"No se pudo cargar el historial de errores: {e}", "danger")
+        # Si algo falla al cargar la lista, usamos el logger de Flask
+        current_app.logger.error(f"Error al cargar bitácora de fallos: {e}")
+        flash("No se pudo conectar con la tabla de errores en SQL Server.", "danger")
         return render_template('sistemas/registro_errores.html', errores=[])
 
 @sistemas_bp.route('/test-error')
 @login_required
 @role_required('Sistemas')
 def generar_error_prueba():
-    repo = SqlServerBackupRepository()
+    """
+    Ruta de prueba profesional: Forza un error y usa el Handler Automático.
+    """
     try:
-        resultado = 1 / 0
+        # 🚀 Provocamos el error de división por cero
+        error_forzado = 10 / 0 
+        
     except Exception as e:
-        usuario_id = current_user.id if current_user.is_authenticated else None
-        repo.registrar_error(
-            modulo='sistemas.test_error', 
-            descripcion=f"Error de prueba forzado: {str(e)}", 
-            usuario_id=usuario_id
-        )
-        flash('Se ha generado y registrado un error de prueba en la bitácora.', 'info')
+        # 🚀 LLAMADA CLAVE: Usamos tu nueva utilidad automática
+        # Esto guardará: Archivo, Línea, Stacktrace y Usuario sin que tú escribas nada más.
+        from app.utils.error_handler import registrar_error_automatico
+        registrar_error_automatico(e)
+        
+        flash('¡Éxito! El error de prueba fue capturado y registrado con su ADN técnico.', 'success')
+    
+    # Redirigimos de vuelta para ver el nuevo registro en la tabla
     return redirect(url_for('sistemas.errores'))
 
 
@@ -381,3 +446,36 @@ def documentos_eliminados_diagnostico():
         results['status'] = 'error'
         results['error'] = str(e)
     return jsonify(results)
+
+# app/presentation/routes/sistemas_routes.py
+
+@sistemas_bp.route('/documentos/eliminados/restaurar-todo', methods=['POST'])
+@login_required
+def restaurar_todo():
+    """Restaura todos los archivos de la papelera unificada de la HMPP."""
+    if current_user.id_rol != 1: 
+        return abort(403)
+        
+    repo = SqlServerPersonalRepository()
+    if repo.recover_all_documents():
+        flash("Se han restaurado todos los documentos exitosamente.", "success")
+    else:
+        flash("Hubo un error al intentar restaurar los documentos.", "danger")
+        
+    # Asegúrate de que el endpoint sea el correcto (probablemente 'sistemas.get_deleted_documents')
+    return redirect(url_for('sistemas.documentos_eliminados')) # CORREGIDO
+
+@sistemas_bp.route('/documentos/eliminados/vaciar', methods=['POST'])
+@login_required
+def vaciar_papelera():
+    """Elimina permanentemente todos los archivos de la papelera."""
+    if current_user.id_rol != 1:
+        return abort(403)
+        
+    repo = SqlServerPersonalRepository()
+    if repo.empty_recycle_bin():
+        flash("La papelera ha sido vaciada permanentemente.", "info")
+    else:
+        flash("Error al intentar vaciar la papelera.", "danger")
+        
+    return redirect(url_for('sistemas.documentos_eliminados')) # CORREGIDO

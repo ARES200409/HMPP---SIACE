@@ -1,13 +1,13 @@
 {% extends 'layouts/base.html' %}
-{% block title %}Iniciar Sesión - LegajoDigital{% endblock %}
+{% block title %}Iniciar Sesión - Escalafón Digital - HMPP{% endblock %}
 
 {% block body_content %}
 <div class="login-container">
 
     <div class="login-box">
         <div class="text-center mb-4">
-            <img src="{{ url_for('static', filename='img/Logo-Diresa-Pasco.png') }}" alt="DIRESA Pasco Logo Grande" class="login-logo-diresa">
-            <h3 class="fw-bold">Legajo Digital DIRESA</h3>
+            <img src="{{ url_for('static', filename='img/muni_logo.png') }}" alt="HMPP Pasco Logo Grande" class="login-logo-muni">
+            <h3 class="fw-bold">Escalafón Digital  HMPP</h3>
             <p class="text-muted">Ingrese sus credenciales para acceder al sistema.</p>
         </div>
 
@@ -51,12 +51,32 @@
         </form>
 
         <div class="text-center mt-4">
-            <small class="text-muted">&copy; 2025 Todos los derechos reservados.</small>
+            <small class="text-muted">&copy; 2026 Todos los derechos reservados.</small>
+            <small class="text-muted"> Desarrollador: Santos Mandujano Jairo</small>
         </div>
     </div>
 </div>
 {% endblock %}
-
+<img src="{{ url_for('static', filename='img/muni_logo.png') }}" 
+     alt="Logo Municipalidad Pasco" 
+     class="login-muni-logo"> <style>
+    .login-muni-logo {
+        width: 130px; 
+        height: auto;
+        margin-bottom: 15px;
+        /* Este es el truco que elimina el recuadro blanco del logo */
+        mix-blend-mode: multiply; 
+        filter: contrast(110%);
+        display: block;
+        margin-left: auto;
+        margin-right: auto;
+    }
+    
+    .login-box img {
+        background-color: transparent !important;
+        border: none !important;
+    }
+</style>
 
 {% block scripts %}
 {{ super() }}

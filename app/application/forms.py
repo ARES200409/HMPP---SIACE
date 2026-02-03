@@ -1,7 +1,7 @@
 # RUTA: app/application/forms.py
 
 from flask_wtf import FlaskForm
-from flask_wtf.file import FileField, FileAllowed
+from flask_wtf.file import FileField, FileAllowed, FileRequired
 from wtforms.validators import DataRequired, Length, Regexp, Optional, Email, NumberRange, EqualTo, ValidationError
 from wtforms import DecimalField, StringField, PasswordField, SubmitField, SelectField, DateField, TextAreaField, FileField, BooleanField
 from datetime import datetime, timedelta
@@ -83,7 +83,7 @@ class LoginForm(FlaskForm):
         ('', '-- Seleccionar Rol --'),
         ('Sistemas', 'Sistemas'),
         ('RRHH', 'Recursos Humanos'),
-        ('AdministradorLegajos', 'Administrador de Legajos'),
+        ('AdministradorLegajos', 'Administrador de Escalafón'),
         ('Personal', 'Personal / Empleado')
     ], validators=[DataRequired(message="Debe seleccionar un rol.")])
 
@@ -181,14 +181,24 @@ class PersonalForm(FlaskForm):
     #         raise ValidationError('Debe seleccionar una unidad administrativa válida.')
 
 class DocumentoForm(FlaskForm):
-    id_seccion = SelectField('Sección del Legajo', coerce=int, validators=[NumberRange(min=1, message="Debe seleccionar una sección.")])
-    id_tipo = SelectField('Tipo de Documento', coerce=int, validators=[NumberRange(min=1, message="Debe seleccionar un tipo de documento.")])
-    descripcion = TextAreaField('Descripción (Opcional)', validators=[Optional(), Length(max=500)])
-    fecha_emision = DateField('Fecha de Emisión', format='%Y-%m-%d', validators=[Optional()],
-                              description='Fecha del documento. Si no se especifica, se usará la fecha de hoy.')
+    # Listas dinámicas que se llenan en la ruta
+    id_seccion = SelectField('Sección del Legajo', coerce=int, choices=[], validators=[Optional()])
+    id_tipo = SelectField('Tipo de Documento', coerce=int, choices=[], validators=[Optional()])
+    
+    # Campo para Legajos Generales (DNI, Capacitaciones, etc.)
+    descripcion = StringField('Descripción', validators=[Optional()])
+    
+    # Campo para Récord Laboral
+    numero_documento = StringField('Número de Documento', validators=[Optional(), Length(max=100)])
+    
+    # Observación detallada (TextArea)
+    observacion = TextAreaField('Descripción / Observación', validators=[Optional(), Length(max=500)])
+    
+    fecha_emision = DateField('Fecha de Emisión', format='%Y-%m-%d', validators=[Optional()])
+    
     archivo = FileField('Seleccionar Archivo', validators=[
         DataRequired(message="Debe seleccionar un archivo."),
-        FileAllowed(['pdf', 'png', 'jpg', 'jpeg', 'docx', 'xlsx'], '¡Solo se permiten archivos PDF, de imagen (PNG, JPG) o de Office (DOCX, XLSX)!')
+        FileAllowed(['pdf', 'png', 'jpg', 'jpeg', 'docx', 'xlsx'], 'Formato no permitido')
     ])
     submit = SubmitField('Subir Documento')
 
@@ -200,7 +210,11 @@ class UserManagementForm(FlaskForm):
     Incluye campos para el rol, la activación y cambio de contraseña.
     """
     # Campos básicos - en creación son requeridos, en edición se usan los nuevos_*
-    username = StringField('Nombre de Usuario', validators=[Optional(), Length(min=4, max=50)])
+    nombre_completo = StringField('Nombre Completo', validators=[DataRequired()])
+    username = StringField('DNI (Nombre de Usuario)', validators=[
+        DataRequired(message="El DNI es obligatorio"),
+        Length(min=8, max=8, message="El DNI debe tener 8 dígitos")
+    ])
     email = StringField('Correo Electrónico', validators=[Optional(), Email(), Length(max=100)])
     
     # Campo para el Rol (los IDs 1, 3, etc. que verificamos en la BD)
@@ -243,6 +257,18 @@ class UserManagementForm(FlaskForm):
     
     submit = SubmitField('Guardar Cambios')
 
+# app/application/forms.py
+
+def validate_username(self, field):
+    """Evita duplicar cuentas con el mismo DNI."""
+    # 🚀 CORRECCIÓN: Importar desde el archivo correcto que creamos (user_repository.py)
+    from app.infrastructure.persistence.user_repository import SqlServerUserRepository
+    repo = SqlServerUserRepository()
+    
+    # Si el DNI ya existe, ahora SÍ detendrá el proceso
+    if repo.find_by_username(field.data):
+        raise ValidationError(f'El DNI {field.data} ya tiene una cuenta de usuario activa.')
+
 class ActualizarPersonalForm(FlaskForm):
     """
     Formulario para que los empleados actualicen sus propios datos personales.
@@ -277,9 +303,9 @@ class ActualizarPersonalForm(FlaskForm):
 
 class BulkUploadForm(FlaskForm):
     """Formulario para la subida masiva de personal desde un archivo Excel."""
-    excel_file = FileField('Archivo Excel (.xlsx)', validators=[
-        DataRequired(message="Por favor, seleccione un archivo."),
-        FileAllowed(['xlsx'], '¡Solo se permiten archivos de Excel (.xlsx)!')
+    excel_file = FileField('Archivo Excel (.xlsx, .xls)', validators=[
+        FileRequired(message="Por favor, seleccione un archivo."), # 🛡️ Más específico para archivos que DataRequired
+        FileAllowed(['xlsx', 'xls'], '¡Solo se permiten archivos de Excel (.xlsx o .xls)!')
     ])
     submit = SubmitField('Procesar Archivo')
 

@@ -1,0 +1,155 @@
+{% extends 'layouts/dashboard.html' %}
+{% block title %}Consultar Récord Laboral - HMPP{% endblock %}
+
+{% block dashboard_content %}
+<div class="container-fluid">
+    <div class="d-sm-flex align-items-center justify-content-between mb-4">
+        <h1 class="h3 mb-0 text-gray-800">
+            <i class="bi bi-cash-stack text-success"></i> Consulta de Récord Laboral
+        </h1>
+        <div class="text-end">
+            <span class="badge bg-primary px-3 py-2 shadow-sm">
+                <i class="bi bi-shield-lock-fill me-1"></i> Rol: Administrador de Escalafón
+            </span>
+        </div>
+    </div>
+
+    <div class="alert alert-info border-0 shadow-sm mb-4">
+        <i class="bi bi-info-circle-fill me-2"></i>
+        Búsqueda centralizada de historial de pagos. Los datos se muestran en <strong>modo lectura</strong> para preservar la integridad de los registros de RRHH.
+    </div>
+
+    <div class="card shadow mb-4 border-left-success border-0">
+        <div class="card-body">
+            <form method="GET" action="{{ url_for('legajo.listar_personal_para_record') }}" class="row g-3 align-items-end">
+                <div class="col-md-3">
+                    <label class="form-label small fw-bold text-uppercase">Filtrar por DNI</label>
+                    {{ form.dni(class="form-control", placeholder="Ej: 7264xxxx") }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small fw-bold text-uppercase">Nombres o Apellidos</label>
+                    {{ form.nombres(class="form-control", placeholder="Buscar trabajador...") }}
+                </div>
+                <div class="col-md-5">
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary flex-grow-1 shadow-sm">
+                            <i class="bi bi-search me-1"></i> Buscar Registros
+                        </button>
+                        <a href="{{ url_for('legajo.listar_personal_para_record') }}" class="btn btn-secondary shadow-sm">
+                            <i class="bi bi-arrow-counterclockwise"></i> Limpiar
+                        </a>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card shadow mb-4 border-0">
+        <div class="card-header py-3 bg-dark text-white d-flex justify-content-between align-items-center">
+            <h6 class="m-0 font-weight-bold"><i class="bi bi-people-fill me-2"></i>Lista de Personal (HMPP Pasco)</h6>
+            <span class="badge bg-light text-dark shadow-sm">{{ pagination.total }} Trabajadores</span>
+        </div>
+        <div class="card-body p-0"> 
+            <div class="table-responsive">
+                <table class="table table-hover mb-0 align-middle">
+                    <thead class="bg-light text-uppercase small">
+                        <tr>
+                            <th class="px-4" style="width: 110px;">DNI</th>
+                            <th>Apellidos y Nombres</th>
+                            <th>Cargo / Puesto</th>
+                            <th class="text-center">Sueldo (S/.)</th>
+                            <th class="text-center">Contrato</th>
+                            <th>Unidad Administrativa</th>
+                            <th class="text-center">Estado</th>
+                            <th class="text-center">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody class="small">
+                        {% for persona in pagination.items %}
+                        <tr>
+                            <td class="px-4"><strong>{{ persona.dni }}</strong></td>
+                            <td class="fw-bold text-dark">{{ persona.apellidos }}, {{ persona.nombres }}</td>
+                            <td>
+                                <span class="text-muted small text-uppercase">
+                                    {{ persona.nombre_cargo or 'No asignado' }}
+                                </span>
+                            </td>
+                            <td class="text-center">
+                                <strong class="text-success">S/. {{ "%.2f"|format(persona.sueldo or 0.0) }}</strong>
+                            </td>
+                            <td class="text-center">
+                                <span class="badge bg-outline-dark border text-dark fw-normal">
+                                    {{ persona.nombre_tipo_contrato or 'S/N' }}
+                                </span>
+                            </td>
+                            <td>
+                                {% if persona.nombre_unidad %}
+                                    <span class="fw-bold">{{ persona.nombre_unidad }}</span>
+                                {% else %}
+                                    <span class="text-muted italic small"><i class="bi bi-exclamation-triangle"></i> S/N</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                {% if persona.activo %}
+                                    <span class="badge bg-success rounded-pill px-3 shadow-sm">Activo</span>
+                                {% else %}
+                                    <span class="badge bg-danger rounded-pill px-3 shadow-sm">Cesado</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                <a href="{{ url_for('legajo.ver_record_laboral_detalle', personal_id=persona.id_personal) }}" 
+                                   class="btn btn-primary btn-sm px-3 shadow-sm fw-bold">
+                                    <i class="bi bi-eye-fill me-1"></i> Ver Récord
+                                </a>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="8" class="text-center py-5">
+                                <div class="text-muted">
+                                    <i class="bi bi-person-x display-4"></i>
+                                    <p class="mt-2 fw-bold">No se encontró personal con los filtros aplicados.</p>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card-footer bg-white border-top-0 py-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div class="small text-muted">
+                    Mostrando página <strong>{{ pagination.page }}</strong> de <strong>{{ pagination.pages }}</strong>
+                </div>
+                <nav aria-label="Navegación de personal">
+                    <ul class="pagination pagination-sm mb-0">
+                        <li class="page-item {{ 'disabled' if not pagination.has_prev }}">
+                            <a class="page-link" href="{{ url_for('legajo.listar_personal_para_record', page=pagination.prev_num, dni=request.args.get('dni', ''), nombres=request.args.get('nombres', '')) if pagination.has_prev else '#' }}">
+                                <i class="bi bi-chevron-left"></i>
+                            </a>
+                        </li>
+                        
+                        {% for page_num in pagination.iter_pages(left_edge=1, left_current=2, right_current=2, right_edge=1) %}
+                            {% if page_num %}
+                                <li class="page-item {{ 'active' if page_num == pagination.page }}">
+                                    <a class="page-link" href="{{ url_for('legajo.listar_personal_para_record', page=page_num, dni=request.args.get('dni', ''), nombres=request.args.get('nombres', '')) }}">{{ page_num }}</a>
+                                </li>
+                            {% else %}
+                                <li class="page-item disabled"><span class="page-link">...</span></li>
+                            {% endif %}
+                        {% endfor %}
+
+                        <li class="page-item {{ 'disabled' if not pagination.has_next }}">
+                            <a class="page-link" href="{{ url_for('legajo.listar_personal_para_record', page=pagination.next_num, dni=request.args.get('dni', ''), nombres=request.args.get('nombres', '')) if pagination.has_next else '#' }}">
+                                <i class="bi bi-chevron-right"></i>
+                            </a>
+                        </li>
+                    </ul>
+                </nav>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

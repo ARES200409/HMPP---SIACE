@@ -1,0 +1,180 @@
+{% extends 'layouts/dashboard.html' %}
+{% from "components/_form_helpers.html" import render_field %}
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block dashboard_content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3 class="fw-bold text-primary">
+            <i class="bi bi-file-earmark-medical-fill me-2"></i>Récord Laboral: {{ personal.apellidos }} {{ personal.nombres }}
+        </h3>
+        <a href="{{ url_for('rrhh.listar_personal') }}" class="btn btn-secondary btn-sm shadow-sm">
+            <i class="bi bi-arrow-left"></i> Volver al listado
+        </a>
+    </div>
+
+    <div class="card mb-4 shadow-sm border-0 border-start border-4 {% if personal.activo %}border-success{% else %}border-secondary{% endif %}">
+        <div class="card-body py-2">
+            <div class="row align-items-center">
+                <div class="col-md-8">
+                    <p class="mb-0 text-muted small">
+                        <strong>DNI:</strong> {{ personal.dni }} | <strong>ID Personal:</strong> #{{ personal.id_personal }}
+                    </p>
+                </div>
+                <div class="col-md-4 text-md-end">
+                    {% if personal.activo %}
+                        <span class="badge bg-success shadow-sm"><i class="bi bi-check-circle me-1"></i> TRABAJADOR ACTIVO</span>
+                    {% else %}
+                        <span class="badge bg-secondary shadow-sm"><i class="bi bi-person-x me-1"></i> TRABAJADOR CESADO</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4 shadow-sm {{ 'border-secondary' if not personal.activo else 'border-primary' }}"
+     {% if not personal.activo %} style="filter: grayscale(1); opacity: 0.7; pointer-events: none;" {% endif %}>
+        
+        <div class="card-header {% if personal.activo %}bg-primary{% else %}bg-secondary{% endif %} text-white py-2">
+            <h6 class="mb-0">
+                <i class="bi bi-cloud-upload"></i> 
+                {% if personal.activo %}Añadir Récord Laboral Digitalizado (HMPP){% else %}Registro Deshabilitado (Solo Consulta){% endif %}
+            </h6>
+        </div>
+
+        <div class="card-body bg-light">
+            {% if not personal.activo %}
+                <div class="alert alert-secondary border-0 mb-3 py-2 shadow-sm">
+                    <i class="bi bi-exclamation-octagon-fill me-2"></i>
+                    <strong>Modo de Solo Consulta:</strong> No se pueden registrar nuevos documentos a un trabajador cesado.
+                </div>
+            {% endif %}
+
+            <form action="{{ url_for('record_laboral.registrar_record', id_personal=personal.id_personal) }}" method="POST" enctype="multipart/form-data">
+                {{ form.hidden_tag() }}
+                
+                <div class="row g-3">
+                    <div class="col-md-5">
+                        <label class="form-label small fw-bold">Descripción del Documento</label>
+                        {{ form.descripcion(class="form-control form-control-sm", placeholder="Ej: Pago de Planilla Enero 2026") }}
+                    </div>
+                    <div class="col-md-7">
+                        <label class="form-label small fw-bold">Seleccionar Archivo (Excel o PDF)</label>
+                        {{ form.archivo(class="form-control form-control-sm") }}
+                    </div>
+                </div>
+
+                <div class="row g-3 mt-1">
+                    <div class="col-md-3">
+                        <label class="form-label small fw-bold text-primary">Fecha Inicio Periodo</label>
+                        {{ form.fecha_emision(class="form-control form-control-sm", type="date") }}
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small fw-bold text-primary">Fecha Fin / Vencimiento</label>
+                        <input type="date" name="fecha_fin_vencimiento" id="fecha_fin_vencimiento" class="form-control form-control-sm" required>
+                    </div>
+                    <div class="col-md-3 offset-md-3 d-flex align-items-end">
+                        <button type="submit" class="btn btn-success btn-sm w-100 shadow-sm">
+                            <i class="bi bi-plus-circle"></i> GUARDAR EN BASE DE DATOS
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card shadow-sm border-0">
+        <div class="card-header bg-dark text-white py-2">
+            <h6 class="mb-0"><i class="bi bi-clock-history me-2"></i>Historial de Récords y Pagos (SQL Server - HMPP)</h6>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover mb-0 align-middle">
+                <thead class="table-light small text-uppercase">
+                    <tr>
+                        <th style="width: 15%;" class="text-center">Registro</th>
+                        <th style="width: 20%;">Archivo</th>
+                        <th style="width: 20%;">Descripción</th>
+                        <th style="width: 20%; text-align: center;">Periodo de Pago</th>
+                        <th style="width: 15%; text-align: center;">Vigencia</th>
+                        <th style="width: 10%; text-align: center;">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody class="small">
+                    {% if documentos %}
+                        {% for doc in documentos %}
+                        <tr class="{% if not personal.activo %}text-muted{% endif %}">
+                            <td class="text-center">
+                                <div class="fw-bold text-primary">
+                                    {{ doc.fecha_registro.strftime('%d/%m/%Y') if doc.fecha_registro else '00/00/----' }}
+                                </div>
+                                <small class="text-muted">
+                                    <i class="bi bi-clock"></i> {{ doc.fecha_registro.strftime('%H:%M:%S') if doc.fecha_registro else '--:--:--' }}
+                                </small>
+                            </td>
+                            <td>
+                                {% if doc.nombre_archivo %}
+                                    {% if '.pdf' in doc.nombre_archivo.lower() %}
+                                        <i class="bi bi-file-earmark-pdf-fill text-danger me-1"></i>
+                                    {% else %}
+                                        <i class="bi bi-file-earmark-spreadsheet-fill text-success me-1"></i>
+                                    {% endif %}
+                                    {{ doc.nombre_archivo }}
+                                {% else %}
+                                    <span class="text-muted">Sin archivo</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ doc.descripcion or 'Sin descripción' }}</td>
+                            <td class="text-center">
+                                {% if doc.fecha_inicio %}
+                                    {{ doc.fecha_inicio.strftime('%d/%m/%Y') }}
+                                    {% if doc.fecha_fin_vencimiento %}
+                                         al <strong>{{ doc.fecha_fin_vencimiento.strftime('%d/%m/%Y') }}</strong>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="text-muted">No especificado</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                {% if doc.fecha_fin_vencimiento %}
+                                    {% if doc.fecha_fin_vencimiento < hoy %}
+                                        <span class="badge bg-danger w-100">VENCIDO</span>
+                                    {% elif doc.fecha_fin_vencimiento == hoy %}
+                                        <span class="badge bg-warning text-dark w-100">VENCE HOY</span>
+                                    {% else %}
+                                        <span class="badge bg-success w-100">VIGENTE</span>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="badge bg-secondary w-100">N/A</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                <div class="d-flex justify-content-center gap-2">
+                                    <a href="{{ url_for('record_laboral.visualizar_archivo', id_record=doc.id_record) }}" 
+                                       class="btn btn-sm btn-outline-primary" target="_blank" title="Ver">
+                                        <i class="bi bi-eye-fill"></i>
+                                    </a>
+
+                                    {% if personal.activo %}
+                                    <form action="{{ url_for('record_laboral.eliminar_record', id_record=doc.id_record, id_personal=personal.id_personal) }}" 
+                                          method="POST" onsubmit="return confirm('¿Eliminar este registro?');" class="m-0">
+                                        {{ form.csrf_token }} 
+                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Eliminar">
+                                            <i class="bi bi-trash-fill"></i>
+                                        </button>
+                                    </form>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="6" class="text-center py-4 text-muted">No hay registros detallados en el legajo digital.</td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

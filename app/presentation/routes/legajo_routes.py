@@ -16,6 +16,8 @@ from app.core.security import IDORProtection
 from datetime import datetime
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash
+from app.database import get_db_read
+
 
 legajo_bp = Blueprint('legajo', __name__, url_prefix='/legajo')
 
@@ -86,6 +88,47 @@ def descargar_plantilla_carga_masiva():
         as_attachment=True,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
+from app.infrastructure.persistence.planilla_repository import PlanillaRepository
+@legajo_bp.route('/seguridad/rotar_clave', methods=['POST'])
+@login_required
+@role_required('AdministradorLegajos', 'Sistemas') # Solo sistemas puede tocar esto
+def rotar_clave_seguridad():
+    repo = PlanillaRepository() # Importar repositorio si hace falta
+    nueva_clave = repo.generar_nueva_clave_dinamica()
+    if nueva_clave:
+        flash(f'Clave de seguridad actualizada: {nueva_clave}', 'success')
+    else:
+        flash('Error al generar clave.', 'danger')
+    return redirect(url_for('legajo.gestionar_token')) # Vuelve al inicio
+
+
+@legajo_bp.route('/seguridad/token')
+@login_required
+@role_required('AdministradorLegajos', 'Sistemas') # Ajustado a tus roles actuales
+def gestionar_token():
+    """
+    Ruta para la pantalla de gestión del Token Dinámico.
+    Permite visualizar la clave actual antes de decidir rotarla.
+    """
+    try:
+        # 1. Instanciamos el repositorio para conectar con la BD
+        repo = PlanillaRepository()
+        
+        # 2. Obtenemos la clave dinámica activa de la tabla configuracion_seguridad
+        # Esto evita que se visualice como '--- ---' en la interfaz
+        clave = repo.obtener_clave_dinamica()
+        
+        # 3. Renderizamos la plantilla dedicada a la gestión del token
+        # La ubicamos en la carpeta 'admin' para seguir tu estructura de archivos
+        return render_template('admin/gestionar_token.html', clave_actual=clave)
+        
+    except Exception as e:
+        # En caso de error, lo registramos en la bitácora que acabas de conectar
+        print(f"Error al cargar gestión de token: {e}")
+        flash('No se pudo cargar la información de seguridad.', 'danger')
+        return redirect(url_for('legajo.dashboard'))
+
 
 
 @legajo_bp.route('/api/tipos_documento/por_seccion/<int:id_seccion>')
@@ -160,7 +203,24 @@ def buscar_documentos():
 @login_required
 @role_required('AdministradorLegajos', 'RRHH')
 def dashboard():
-    return render_template('admin/dashboard.html', username=current_user.username)
+    """
+    Panel principal de Escalafón/Administración.
+    Carga los datos del usuario y el token de seguridad activo.
+    """
+    # 1. Instanciamos el repositorio para obtener el token de la BD
+    repo = PlanillaRepository()
+    
+    # 2. Consultamos la clave dinámica actual
+    # Esto es vital para que la tarjeta de "Seguridad de Planillas" muestre el código real
+    clave = repo.obtener_clave_dinamica()
+    
+    # 3. Renderizamos el template en la carpeta 'admin'
+    # Usamos 'nombre_usuario' que es la columna real detectada en SQL
+    return render_template(
+        'admin/dashboard.html', 
+        username=current_user.username, 
+        clave_actual=clave
+    )
 
 @legajo_bp.route('/personal/<int:personal_id>')
 @login_required
@@ -414,18 +474,16 @@ def subir_documento(personal_id):
 def eliminar_personal(personal_id):
     legajo_service = current_app.config['LEGAJO_SERVICE']
     try:
-        # Se intenta desactivar el legajo
-        legajo_service.delete_personal_by_id(personal_id, current_user.id)
-        flash('El legajo ha sido desactivado correctamente.', 'success')
-
-    except ValueError as ve:
-        # Se captura el error específico si la persona no existe
-        current_app.logger.warning(f"Intento de eliminar un legajo no existente ({personal_id}): {ve}")
-        # Se muestra el mensaje de error del servicio directamente al usuario
-        flash(str(ve), 'warning')
+        # CORRECCIÓN: Usamos la función BLINDADA que sincroniza con Sistemas
+        # Enviamos 'Inactivo' para que el sistema ponga al usuario en ROJO (0)
+        success, msg = legajo_service.cambiar_estado_personal(personal_id, 'Inactivo')
+        
+        if success:
+            flash('El legajo ha sido desactivado y el acceso al sistema bloqueado.', 'success')
+        else:
+            flash(f'Advertencia: {msg}', 'warning')
 
     except Exception as e:
-        # Se captura cualquier otro error inesperado
         current_app.logger.error(f"Error al eliminar legajo {personal_id}: {e}")
         flash(f'Ocurrió un error al desactivar el legajo: {e}', 'danger')
         
@@ -437,21 +495,22 @@ def eliminar_personal(personal_id):
 def reactivar_personal(personal_id):
     legajo_service = current_app.config['LEGAJO_SERVICE']
     try:
-        # Se intenta reactivar el legajo
-        legajo_service.activate_personal_by_id(personal_id, current_user.id)
-        flash('El legajo ha sido reactivado correctamente.', 'success')
-
-    except ValueError as ve:
-        # Se captura el error específico si la persona no existe
-        current_app.logger.warning(f"Intento de reactivar un legajo no existente ({personal_id}): {ve}")
-        flash(str(ve), 'warning')
+        # CORRECCIÓN CRÍTICA: Usamos la misma función BLINDADA
+        # Enviamos 'Activo' para que el sistema detecte la palabra clave y ponga al usuario en VERDE (1)
+        success, msg = legajo_service.cambiar_estado_personal(personal_id, 'Activo')
+        
+        if success:
+            flash('El legajo ha sido reactivado y el acceso al sistema habilitado.', 'success')
+        else:
+            flash(f'Advertencia: {msg}', 'warning')
 
     except Exception as e:
-        # Se captura cualquier otro error inesperado
         current_app.logger.error(f"Error al reactivar legajo {personal_id}: {e}")
         flash(f'Ocurrió un error al reactivar el legajo: {e}', 'danger')
         
     return redirect(url_for('legajo.listar_personal'))
+
+
 
 @legajo_bp.route('/personal/<int:personal_id>/editar', methods=['GET', 'POST'])
 @login_required
@@ -691,13 +750,17 @@ def procesar_solicitud(solicitud_id, accion):
         if resultado:
             msg = 'Documento actualizado correctamente.' if accion == 'aprobar' else 'Solicitud rechazada.'
             flash(msg, 'success')
-            
-            audit_service.log(
-                current_user.id, 
-                'AdminLegajos', 
-                f'{accion.upper()}_SOLICITUD_CAMBIO', 
-                f"Procesó solicitud ID {solicitud_id}"
-            )
+
+            try:
+                audit_service = current_app.config['AUDIT_SERVICE']
+                audit_service.log(
+                    current_user.id, 
+                    'AdminLegajos', 
+                    f'{accion.upper()}_SOLICITUD_CAMBIO', 
+                    f"Procesó solicitud ID {solicitud_id}"
+                )
+            except:
+                pass
         else:
             flash('No se pudo completar la operación en la base de datos.', 'danger')
 
@@ -890,3 +953,157 @@ def check_dni_api(dni):
     # Usamos tu método existente del repositorio
     existe = legajo_service._personal_repo.check_dni_exists(dni)
     return jsonify({'exists': existe})
+
+# ==============================================================================
+# GESTIÓN DE SOLICITUDES ARCO (CANCELACIÓN DE DATOS) - CORREGIDO
+# ==============================================================================
+
+# 1. RUTA PARA VER LA BANDEJA DE SOLICITUDES
+@legajo_bp.route('/solicitudes/arco', methods=['GET'])
+@login_required
+def gestionar_solicitudes_arco():
+    # ✅ CORRECCIÓN 1: Agregamos 'AdministradorEscalafon' a la lista
+    # (También incluimos 'AdministradorLegajos' por si acaso usas ese otro rol)
+    roles_permitidos = ['Administrador', 'Sistemas', 'Legajos', 'RRHH', 'AdministradorLegajos', 'AdministradorEscalafon']
+
+    if current_user.rol not in roles_permitidos:
+        flash(f'Acceso denegado. Tu rol ({current_user.rol}) no tiene permisos.', 'danger')
+        return redirect(url_for('auth.login'))
+
+    conn = get_db_read()
+    cursor = conn.cursor()
+    
+    query = """
+        SELECT 
+            s.id_solicitud,
+            s.fecha_solicitud,
+            p.nombres + ' ' + p.apellidos as nombre_completo,
+            p.dni,
+            s.datos_afectados,
+            s.motivo_solicitud
+        FROM solicitudes_arco s
+        INNER JOIN personal p ON s.id_personal = p.id_personal
+        WHERE s.estado = 'PENDIENTE'
+        ORDER BY s.fecha_solicitud DESC
+    """
+    cursor.execute(query)
+    solicitudes = cursor.fetchall()
+    #conn.close()
+
+    # ✅ CORRECCIÓN 2: Ruta del Template
+    # Asegúrate de que el archivo 'gestion_arco.html' esté DENTRO de la carpeta 'templates/admin'
+    return render_template('admin/gestion_arco.html', solicitudes=solicitudes)
+
+
+# 2. RUTA MÁGICA: ELIMINA LOS DATOS O RECHAZA
+@legajo_bp.route('/procesar-arco/<int:id_solicitud>/<accion>', methods=['GET', 'POST'])
+@login_required
+def procesar_arco(id_solicitud, accion):
+    # ✅ CORRECCIÓN 3: Agregamos 'AdministradorEscalafon' AQUÍ TAMBIÉN
+    # Si no lo pones aquí, el botón de aprobar te dará error.
+    roles_permitidos = ['Administrador', 'Sistemas', 'Legajos', 'RRHH', 'AdministradorLegajos', 'AdministradorEscalafon']
+
+    if current_user.rol not in roles_permitidos:
+        flash('No tienes permisos para ejecutar esta acción.', 'danger')
+        return redirect(url_for('auth.login'))
+
+    conn = get_db_read()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("SELECT id_personal, datos_afectados FROM solicitudes_arco WHERE id_solicitud = ?", (id_solicitud,))
+        row = cursor.fetchone()
+        
+        if not row:
+            flash('Solicitud no encontrada.', 'warning')
+            return redirect(url_for('legajo.gestionar_solicitudes_arco'))
+
+        id_personal = row[0]
+        datos_texto = row[1]
+
+        if accion == 'APROBAR':
+            mapa = {
+                'Email Personal': 'email_personal',
+                'Telefono': 'telefono',
+                'Direccion': 'direccion',
+                'Datos Sensibles': 'datos_sensibles'
+            }
+
+            lista_borrar = datos_texto.split(',')
+            sets = []
+            
+            for item in lista_borrar:
+                clave = item.strip()
+                if clave in mapa:
+                    columna = mapa[clave]
+                    sets.append(f"{columna} = NULL")
+
+            if sets:
+                sql = f"UPDATE personal SET {', '.join(sets)} WHERE id_personal = ?"
+                cursor.execute(sql, (id_personal,))
+            
+            cursor.execute("UPDATE solicitudes_arco SET estado = 'ATENDIDO', fecha_atencion = GETDATE() WHERE id_solicitud = ?", (id_solicitud,))
+            flash('Solicitud APROBADA. Datos eliminados correctamente.', 'success')
+
+        elif accion == 'RECHAZAR':
+            cursor.execute("UPDATE solicitudes_arco SET estado = 'RECHAZADO', fecha_atencion = GETDATE() WHERE id_solicitud = ?", (id_solicitud,))
+            flash('Solicitud rechazada.', 'info')
+
+        conn.commit()
+
+    except Exception as e:
+        conn.rollback()
+        print(f"Error ARCO: {e}")
+        flash('Error al procesar la solicitud.', 'danger')
+    finally:
+        conn.close()
+
+    return redirect(url_for('legajo.gestionar_solicitudes_arco'))
+
+
+
+@legajo_bp.route('/papelera/planillas')
+@login_required
+@role_required('AdministradorLegajos', 'Sistemas')
+def papelera_planillas():
+    repo = PlanillaRepository()
+    
+    # CORRECCIÓN: Usamos el nombre exacto que definimos en el repositorio
+    planillas_borradas = repo.obtener_planillas_eliminadas() 
+    
+    return render_template('admin/papelera_planillas.html', planillas=planillas_borradas)
+
+@legajo_bp.route('/papelera/planillas/restaurar/<int:id>', methods=['POST'])
+@login_required
+# RECOMENDACIÓN: Agregamos 'Sistemas' por si el administrador principal no está
+@role_required('AdministradorLegajos', 'Sistemas')
+def restaurar_planilla(id):
+    repo = PlanillaRepository()
+    
+    # CORRECCIÓN: Usamos el nombre 'restaurar_planilla_logica' que está en tu repo
+    if repo.restaurar_planilla_logica(id):
+        flash('✅ Planilla restaurada con éxito. Ya es visible nuevamente en RRHH.', 'success')
+    else:
+        flash('❌ No se pudo restaurar la planilla. Inténtelo de nuevo.', 'danger')
+        
+    return redirect(url_for('legajo.papelera_planillas'))
+
+@legajo_bp.route('/papelera/planillas/eliminar_permanente/<int:id>', methods=['POST'])
+@login_required
+@role_required('AdministradorLegajos', 'Sistemas')
+def eliminar_permanente_planilla(id):
+    repo = PlanillaRepository()
+    if repo.eliminar_planilla_permanente(id):
+        flash('🗑️ Planilla eliminada permanentemente del sistema.', 'success')
+    else:
+        flash('❌ Error al intentar eliminar permanentemente.', 'danger')
+    return redirect(url_for('legajo.papelera_planillas'))
+
+@legajo_bp.route('/papelera/planillas/vaciar', methods=['POST'])
+@login_required
+@role_required('AdministradorLegajos', 'Sistemas')
+def vaciar_papelera_planillas():
+    repo = PlanillaRepository()
+    if repo.vaciar_papelera_planillas():
+        flash('🔥 La papelera de planillas ha sido vaciada por completo.', 'success')
+    return redirect(url_for('legajo.papelera_planillas'))

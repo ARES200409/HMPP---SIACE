@@ -49,53 +49,55 @@
     </div>
 
     <!-- Información del Usuario -->
-    <div class="row g-4 mb-5">
-        <!-- Tarjeta de Información Principal -->
-        <div class="col-lg-4">
-            <div
-                style="background: white; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); overflow: hidden; border: 1px solid #e5e7eb;">
-                <div
-                    style="background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); padding: 1.5rem; color: white;">
-                    <h6 style="margin: 0; font-weight: 600; font-size: 1.1rem;"><i
-                            class="bi bi-person-circle me-2"></i>Mi Cuenta</h6>
+    <div class="col-lg-4">
+            <div style="background: white; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); overflow: hidden; border: 1px solid #e5e7eb;">
+                <div style="background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); padding: 1.5rem; color: white;">
+                    <h6 style="margin: 0; font-weight: 600; font-size: 1.1rem;">
+                        <i class="bi bi-person-circle me-2"></i>Mi Cuenta
+                    </h6>
                 </div>
                 <div style="padding: 2rem; text-align: center;">
-                    <!-- Avatar -->
                     <div style="margin-bottom: 1.5rem;">
-                        <div
-                            style="width: 130px; height: 130px; margin: 0 auto 1rem; background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 3rem; box-shadow: 0 8px 20px rgba(30, 58, 138, 0.3); border: 3px solid white;">
+                        <div style="width: 130px; height: 130px; margin: 0 auto 1rem; background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 3rem; box-shadow: 0 8px 20px rgba(30, 58, 138, 0.3); border: 3px solid white;">
                             <i class="bi bi-person-fill"></i>
                         </div>
                     </div>
 
-                    <!-- Nombre -->
-                    <h5 style="font-weight: 700; font-size: 1.5rem; margin-bottom: 0.5rem; color: #1f2937;">{{
-                        user_data.username }}</h5>
-                    <p
-                        style="color: #6b7280; margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
-                        <i class="bi bi-envelope" style="color: #0284c7;"></i>{{ user_data.email }}
+                    <h5 style="font-weight: 700; font-size: 1.5rem; margin-bottom: 0.5rem; color: #1f2937;">
+                        {% if user_data.personal_info and user_data.personal_info.nombre_completo %}
+                            {{ user_data.personal_info.nombre_completo }}
+                        {% else %}
+                            {{ user_data.username }}
+                        {% endif %}
+                    </h5>
+
+                    <p style="color: #6b7280; margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
+                        <i class="bi bi-envelope-check-fill" style="color: #16a34a;" title="Correo de Acceso Validado"></i>
+                        <strong>{{ user_data.email }}</strong>
                     </p>
 
-                    <!-- Rol -->
-                    {% if user_data.rol %}
                     <div style="margin-bottom: 1.5rem;">
-                        <span
-                            style="display: inline-block; background: linear-gradient(135deg, #0f766e 0%, #14b8a6 100%); color: white; padding: 0.6rem 1.2rem; border-radius: 20px; font-weight: 600; font-size: 0.95rem;">
-                            <i class="bi bi-shield-check me-1"></i>{{ user_data.rol.nombre if user_data.rol.nombre else
-                            'Sin Rol' }}
+                        <span style="display: inline-block; background: linear-gradient(135deg, #0f766e 0%, #14b8a6 100%); color: white; padding: 0.6rem 1.2rem; border-radius: 20px; font-weight: 600; font-size: 0.95rem;">
+                            <i class="bi bi-shield-check me-1"></i>
+                            {% if user_data.rol %}
+                                {# Si existe un rol en el sistema (ej: "Personal", "RRHH"), lo mostramos directo #}
+                                {{ user_data.rol }}
+                            {% elif user_data.personal_info %}
+                                {# Si no tiene rol de sistema pero tiene ficha, mostramos su cargo #}
+                                {{ user_data.personal_info.cargo if user_data.personal_info.cargo else 'Personal HMPP' }}
+                            {% else %}
+                                Usuario Invitado
+                            {% endif %}
                         </span>
                     </div>
-                    {% endif %}
 
-                    <!-- Estado -->
                     <hr style="margin: 1.5rem 0;">
                     <div style="margin-bottom: 1rem;">
                         <p style="color: #6b7280; font-weight: 500; margin-bottom: 0.5rem;">Estado de Cuenta</p>
-                        <span
-                            class="badge-estado {% if user_data.estado == 'activo' %}badge-activo{% elif user_data.estado == 'inactivo' %}badge-inactivo{% else %}badge-bloqueado{% endif %}">
-                            {% if user_data.estado == 'activo' %}<i class="bi bi-check-circle me-1"></i>{% elif
-                            user_data.estado == 'inactivo' %}<i class="bi bi-clock me-1"></i>{% else %}<i
-                                class="bi bi-x-circle me-1"></i>{% endif %}
+                        <span class="badge-estado {% if user_data.estado == 'activo' %}badge-activo{% elif user_data.estado == 'inactivo' %}badge-inactivo{% else %}badge-bloqueado{% endif %}">
+                            {% if user_data.estado == 'activo' %}<i class="bi bi-check-circle me-1"></i>
+                            {% elif user_data.estado == 'inactivo' %}<i class="bi bi-clock me-1"></i>
+                            {% else %}<i class="bi bi-x-circle me-1"></i>{% endif %}
                             {{ user_data.estado | upper }}
                         </span>
                     </div>
@@ -103,8 +105,7 @@
                     {% if user_data.fecha_registro %}
                     <div style="color: #6b7280; font-size: 0.9rem;">
                         <i class="bi bi-calendar-event me-1" style="color: #0284c7;"></i>
-                        <strong>Registrado:</strong> {{ user_data.fecha_registro.strftime('%d de %B de %Y') if
-                        user_data.fecha_registro.strftime else user_data.fecha_registro }}
+                        <strong>Desde:</strong> {{ user_data.fecha_registro.strftime('%d/%m/%Y') if user_data.fecha_registro.strftime else user_data.fecha_registro }}
                     </div>
                     {% endif %}
                 </div>
@@ -164,7 +165,7 @@
                 <div style="padding: 2rem;">
                     <p style="color: #6b7280; margin-bottom: 1.5rem;">
                         <i class="bi bi-info-circle" style="color: #0284c7;"></i>
-                        Tu email se utiliza para notificaciones y recuperación de cuenta.
+                        Tu email se utiliza para notificaciones, envío del código de 6 dígitos y recuperación de cuenta.
                     </p>
 
                     <form method="POST" action="{{ url_for('auth.cambiar_email') }}" novalidate>

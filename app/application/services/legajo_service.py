@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 import secrets
 import string
 import logging
-
+from app.database import get_db_read, get_db_write
 logger = logging.getLogger(__name__)
 
 
@@ -48,18 +48,30 @@ class LegajoService:
     def get_personal_details(self, personal_id, current_user):
         """
         Obtiene todos los detalles del legajo de una persona por su ID,
-        aplicando reglas de control de acceso.
+        aplicando reglas de control de acceso inteligentes.
         """
+        # 1. Recuperar la información del repositorio (JOINs de SQL Server)
         legajo = self._personal_repo.get_full_legajo_by_id(personal_id)
         if not legajo:
             return None
 
-        # Seguridad: Los roles 'RRHH', 'Sistemas' y 'AdministradorLegajos' tienen permitido ver cualquier legajo.
-        # Se mantiene la estructura por si se necesita añadir lógica de permisos más granular en el futuro.
-        if current_user.rol not in ['RRHH', 'Sistemas', 'AdministradorLegajos']:
-            # Si el rol no es uno de los permitidos, se deniega el acceso.
-            # (Actualmente, los decoradores de ruta ya previenen esto, pero es una doble capa de seguridad).
-            raise PermissionError("No tiene permiso para ver este legajo.")
+        # 🚀 DEFINICIÓN DE ROLES: Unificamos los roles administrativos
+        roles_con_acceso_total = ['RRHH', 'Sistemas', 'AdministradorLegajos', 'AdministradorEscalafon']
+
+        # 🚀 LÓGICA DE AUTO-ACCESO: Permite que el trabajador vea su propio legajo
+        id_personal_usuario = int(getattr(current_user, 'id_personal', 0))
+        es_propietario = id_personal_usuario == int(personal_id)
+        
+        # 🚀 LÓGICA DE ADMINISTRADOR: Permite acceso global a roles autorizados
+        es_administrativo = current_user.rol in roles_con_acceso_total
+
+        # 🛡️ VALIDACIÓN FINAL: Si no es admin Y no es su propia info, bloqueamos.
+        if not (es_administrativo or es_propietario):
+            # Este error será capturado por la ruta para mostrar un flash message
+            raise PermissionError(f"Seguridad DIRESA: El usuario {current_user.username} no tiene permiso para ver el legajo {personal_id}.")
+        
+        if legajo and 'contratos' not in legajo:
+            legajo['contratos'] = self._personal_repo.get_contratos_directo(personal_id)
 
         return legajo
 
@@ -661,3 +673,151 @@ class LegajoService:
         Orquesta la búsqueda de documentos por descripción, tipo o sección.
         """
         return self._personal_repo.search_documents(query, id_seccion, id_tipo)
+
+
+    # Reemplaza la función get_record_laboral con esto:
+    def get_record_laboral(self, id_personal):
+        """
+        Recibe DIRECTAMENTE el id_personal (ej: 7) y busca sus documentos.
+        """
+        conn = get_db_read()
+        cursor = conn.cursor()
+        try:
+            print(f"--- DEBUG: Buscando Récord para Personal ID: {id_personal} ---")
+            
+            # Consulta directa a record_laboral
+            # Usamos COALESCE para que no falle si alguna fecha está vacía
+            query = """
+                SELECT 
+                    id_record,
+                    descripcion,
+                    fecha_inicio,
+                    fecha_fin_vencimiento,
+                    nombre_archivo,
+                    activo
+                FROM record_laboral
+                WHERE id_personal = ?
+                ORDER BY id_record DESC
+            """
+            cursor.execute(query, (id_personal,))
+            
+            # Convertir resultados a diccionario
+            columns = [column[0] for column in cursor.description]
+            results = []
+            for row in cursor.fetchall():
+                results.append(dict(zip(columns, row)))
+            
+            print(f"--- DEBUG: Encontrados {len(results)} registros ---")
+            return results
+
+        except Exception as e:
+            print(f"--- ERROR en get_record_laboral: {e} ---")
+            return []
+        finally:
+            conn.close()
+
+    # 2. Función NUEVA para DESCARGAR EL PDF (Binario)
+    def get_archivo_record_laboral(self, id_record):
+        conn = get_db_read()
+        cursor = conn.cursor()
+        try:
+            # Traemos el nombre y el BINARIO (blob)
+            query = "SELECT nombre_archivo, archivo_binario FROM record_laboral WHERE id_record = ?"
+            cursor.execute(query, (id_record,))
+            return cursor.fetchone()
+        except Exception as e:
+            print(f"Error obteniendo binario récord: {e}")
+            return None
+        finally:
+            conn.close()
+
+
+    def get_info_perfil_por_usuario(self, id_usuario, dni_usuario=None):
+        """
+        Busca datos del personal. 
+        Intenta primero por id_usuario. Si falla, intenta por DNI (asumiendo que username es DNI).
+        """
+        conn = get_db_read()
+        cursor = conn.cursor()
+        try:
+            print(f"--- BUSCANDO PERFIL: ID={id_usuario}, DNI_POSIBLE={dni_usuario} ---")
+            
+            # Consultamos por id_usuario O por dni
+            query = """
+                SELECT 
+                    nombres, 
+                    apellidos, 
+                    dni, 
+                    email_institucional, 
+                    email_personal,
+                    telefono, 
+                    unidad_organica as unidad_administrativa, 
+                    cargo, 
+                    fecha_inicio as fecha_ingreso
+                FROM personal 
+                WHERE id_usuario = ? OR dni = ?
+            """
+            # Pasamos los parámetros dos veces (uno para cada ?)
+            cursor.execute(query, (id_usuario, dni_usuario))
+            row = cursor.fetchone()
+            
+            if row:
+                print("--- ¡PERFIL ENCONTRADO! ---")
+                columns = [column[0] for column in cursor.description]
+                return dict(zip(columns, row))
+            
+            print("--- NO SE ENCONTRÓ PERFIL ---")
+            return None
+        except Exception as e:
+            print(f"Error buscando perfil: {e}")
+            return None
+        finally:
+            conn.close()
+
+    # En app/application/services/legajo_service.py
+
+    def cambiar_estado_personal(self, id_personal, nuevo_estado):
+        """
+        Cambia el campo 'activo' en PERSONAL y sincroniza ÚNICAMENTE con el USUARIO correspondiente.
+        """
+        conn = get_db_write() 
+        cursor = conn.cursor()
+        
+        try:
+            logger.info(f"--- PROCESANDO: ID {id_personal} -> Estado solicitado: {nuevo_estado} ---")
+
+            # 1. Definir valor numérico (1 o 0)
+            estados_positivos = ['Activo', 'ACTIVO', 'activo', '1', 1, True, 'Habilitado']
+            es_activo_bit = 1 if nuevo_estado in estados_positivos else 0
+
+            # 2. Actualizar PERSONAL (Solo este ID)
+            query_rrhh = "UPDATE personal SET activo = ? WHERE id_personal = ?"
+            cursor.execute(query_rrhh, (es_activo_bit, id_personal))
+
+            # 3. Actualizar USUARIO (Solo el vinculado a este ID)
+            # VERIFICACIÓN DOBLE: Usamos una subconsulta exacta
+            query_sistemas = """
+                UPDATE usuarios 
+                SET activo = ? 
+                WHERE id_personal = ?  -- Usamos id_personal directamente si existe la FK, es más seguro
+            """
+            
+            # Si no tienes la columna id_personal en la tabla usuarios, usa esta versión:
+            # query_sistemas = "UPDATE usuarios SET activo = ? WHERE id_usuario = (SELECT id_usuario FROM personal WHERE id_personal = ?)"
+
+            cursor.execute(query_sistemas, (es_activo_bit, id_personal))
+            
+            if cursor.rowcount > 1:
+                # Si afectó a más de 1, algo anda muy mal -> Rollback
+                conn.rollback()
+                return False, "Error de seguridad: La actualización iba a afectar a múltiples usuarios. Operación cancelada."
+
+            conn.commit()
+            return True, f"Estado actualizado a {'Activo' if es_activo_bit else 'Inactivo'} correctamente."
+
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Error en sincronización: {e}")
+            return False, f"Error técnico: {str(e)}"
+        finally:
+            conn.close()

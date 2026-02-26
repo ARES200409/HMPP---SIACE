@@ -1,8 +1,8 @@
 {% extends 'layouts/dashboard.html' %}
-{% block title %}Panel RRHH -
-Dashboard{% endblock %} {% block dashboard_content %}
+{% block title %}Panel RRHH - Dashboard{% endblock %} 
 
-<!-- Título centrado -->
+{% block dashboard_content %}
+
 <div class="card shadow-sm border-0 mb-4">
    <div class="card-body text-center py-4">
       <h1 class="display-6 text-primary fw-semibold mb-2">
@@ -14,13 +14,10 @@ Dashboard{% endblock %} {% block dashboard_content %}
    </div>
 </div>
 
-<!-- Acciones principales -->
 <div class="row g-4 mb-5">
+   
    <div class="col-md-6 col-lg-4">
-      <a
-         href="{{ url_for('rrhh.listar_personal') }}"
-         class="dashboard-card consult-legajo"
-      >
+      <a href="{{ url_for('rrhh.listar_personal') }}" class="dashboard-card consult-legajo">
          <div class="card-icon text-primary mb-3">
             <i class="bi bi-search"></i>
          </div>
@@ -34,10 +31,21 @@ Dashboard{% endblock %} {% block dashboard_content %}
    </div>
 
    <div class="col-md-6 col-lg-4">
-      <a
-         href="{{ url_for('rrhh.panel_rrhh') }}"
-         class="dashboard-card statistics"
-      >
+        <a href="{{ url_for('rrhh.gestionar_planillas') }}" class="dashboard-card planillas">
+            <div class="card-icon mb-3">
+                <i class="bi bi-cash-stack"></i>
+            </div>
+            <h4>Gestión de Planillas</h4>
+            <p class="text-muted">Carga y administración de boletas de pago</p>
+            <div class="ingresar-link">
+                <span>Gestionar</span>
+                <i class="bi bi-arrow-right ms-1"></i>
+            </div>
+        </a>
+    </div>
+
+   <div class="col-md-6 col-lg-4">
+      <a href="{{ url_for('rrhh.panel_rrhh') }}" class="dashboard-card statistics">
          <div class="card-icon text-info mb-3">
             <i class="bi bi-graph-up"></i>
          </div>
@@ -51,10 +59,7 @@ Dashboard{% endblock %} {% block dashboard_content %}
    </div>
 
    <div class="col-md-6 col-lg-4">
-      <a
-         href="{{ url_for('rrhh.exportar_empleados_excel') }}"
-         class="dashboard-card reports"
-      >
+      <a href="{{ url_for('rrhh.exportar_empleados_excel') }}" class="dashboard-card reports">
          <div class="card-icon text-success mb-3">
             <i class="bi bi-file-earmark-excel"></i>
          </div>
@@ -69,7 +74,6 @@ Dashboard{% endblock %} {% block dashboard_content %}
 
 </div>
 
-<!-- Información del sistema -->
 <div class="row">
    <div class="col-12">
       <div class="card shadow-sm border-0">
@@ -82,8 +86,7 @@ Dashboard{% endblock %} {% block dashboard_content %}
          <div class="card-body text-center">
             <p class="mb-0">
                Sistema de Gestión de Legajos - Módulo RRHH |
-               <strong>Acceso de solo lectura:</strong> Consulta y visualización
-               de información
+               <strong>Acceso de solo lectura:</strong> Consulta y visualización de información
             </p>
          </div>
       </div>
@@ -111,14 +114,36 @@ Dashboard{% endblock %} {% block dashboard_content %}
       text-decoration: none;
    }
 
+   /* ESTILOS ESPECÍFICOS POR TARJETA */
+   
+   /* Planillas (Morado/Índigo) */
+   .dashboard-card.planillas {
+      border-left-color: #6610f2;
+   }
+   .dashboard-card.planillas .card-icon {
+      color: #6610f2;
+   }
+   .dashboard-card.planillas .ingresar-link {
+      color: #6610f2;
+   }
+
+   /* Estadísticas (Celeste) */
    .dashboard-card.statistics {
       border-left-color: #0dcaf0;
    }
+   .dashboard-card.statistics .ingresar-link {
+      color: #0dcaf0;
+   }
 
+   /* Reportes (Verde) */
    .dashboard-card.reports {
       border-left-color: #198754;
    }
+   .dashboard-card.reports .ingresar-link {
+      color: #198754;
+   }
 
+   /* Estilos Generales de Texto e Iconos */
    .dashboard-card h4 {
       font-size: 1.25rem;
       font-weight: 600;
@@ -147,14 +172,6 @@ Dashboard{% endblock %} {% block dashboard_content %}
       display: inline-flex;
       align-items: center;
       transition: gap 0.3s ease;
-   }
-
-   .dashboard-card.statistics .ingresar-link {
-      color: #0dcaf0;
-   }
-
-   .dashboard-card.reports .ingresar-link {
-      color: #198754;
    }
 
    .dashboard-card:hover .ingresar-link i {

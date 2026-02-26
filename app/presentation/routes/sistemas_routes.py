@@ -6,7 +6,7 @@ import io
 from datetime import datetime, timedelta
 from app.infrastructure.persistence.error_repository import ErrorRepository 
 
-
+from werkzeug.security import generate_password_hash
 # CORRECCIÓN DEFINITIVA DE LA BASE DE DATOS
 # Importamos la conexión desde la ruta real que vimos en estructura_repository.py
 from app.database.connector import get_db_write as db 
@@ -182,19 +182,49 @@ def editar_usuario(user_id):
         return redirect(url_for('sistemas.gestionar_usuarios'))
 
 
+from flask import jsonify # Asegúrate de tener esto arriba
+
+
+# ... otros imports ...
+
 @sistemas_bp.route('/usuarios/reset_password/<int:user_id>', methods=['POST'])
 @login_required
 @role_required('Sistemas')
 def reset_password(user_id):
+    """
+    Restablece la contraseña de un usuario para que sea igual a su DNI (username).
+    """
+    from app.database import get_db_write
+    
+    conn = get_db_write()
+    cursor = conn.cursor()
     try:
-        usuario_service = current_app.config['USUARIO_SERVICE']
-        mensaje, tipo = usuario_service.reset_user_password(user_id)
-        flash(mensaje, tipo)
+        # 1. Buscar el username (DNI) del usuario
+        cursor.execute("SELECT username FROM usuarios WHERE id_usuario = ?", (user_id,))
+        row = cursor.fetchone()
+        
+        if not row:
+            return jsonify({'success': False, 'message': 'Usuario no encontrado.'}), 404
+            
+        username_dni = row[0]
+        
+        # 2. Generar el hash de la nueva contraseña (que será el mismo DNI)
+        new_password_hash = generate_password_hash(username_dni)
+        
+        # 3. Actualizar la contraseña en la base de datos
+        cursor.execute("UPDATE usuarios SET password_hash = ? WHERE id_usuario = ?", (new_password_hash, user_id))
+        conn.commit()
+        
+        # (Opcional) Registrar en auditoría si tienes el servicio
+        # current_app.config['AUDIT_SERVICE'].log(...)
+        
+        return jsonify({'success': True, 'message': f'Contraseña restablecida exitosamente al DNI: {username_dni}'})
+        
     except Exception as e:
-        current_app.logger.error(f"Error al resetear contraseña del usuario {user_id}: {e}")
-        flash('Ocurrió un error técnico al resetear la contraseña.', 'danger')
-    return redirect(url_for('sistemas.gestionar_usuarios'))
-
+        conn.rollback()
+        return jsonify({'success': False, 'message': f'Error interno: {str(e)}'}), 500
+    finally:
+        conn.close()
 
 
 @sistemas_bp.route('/usuarios/cambiar_estado/<int:personal_id>', methods=['POST'])
@@ -479,3 +509,4 @@ def vaciar_papelera():
         flash("Error al intentar vaciar la papelera.", "danger")
         
     return redirect(url_for('sistemas.documentos_eliminados')) # CORREGIDO
+

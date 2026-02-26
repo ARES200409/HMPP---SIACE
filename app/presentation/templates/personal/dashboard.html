@@ -1,29 +1,39 @@
 {% extends 'layouts/dashboard.html' %}
 
 {# 
-   CORRECCIÓN DE LÓGICA FRONTEND:
-   Eliminamos la redefinición de 'block body_content'. 
-   Ahora heredamos la estructura (sidebar + header) definida en 'layouts/dashboard.html'.
-   Esto asegura que las nuevas opciones del menú aparezcan automáticamente.
+   ARCHIVO PUENTE: app/presentation/templates/personal/dashboard.html
 #}
 
 {% block extra_css %}
-    {# Mantenemos los estilos específicos y cargamos los del padre #}
+    {# 1. Estilos base #}
     {{ super() }}
+    
+    {# 2. Tus estilos #}
     <link rel="stylesheet" href="{{ url_for('static', filename='css/mejoras_diseño.css') }}">
+
+    {# 3. 🎯 CORRECCIÓN QUIRÚRGICA #}
+    <style>
+        /* Aquí está la magia, Jairo.
+           Atacamos la combinación exacta de clases que me mostraste.
+           Le decimos: "Al elemento que sea .user-role Y TAMBIÉN .text-primary, ponlo blanco"
+        */
+        
+        .user-panel .user-role.text-primary {
+            color: #ffffff !important; /* Blanco Puro */
+            opacity: 1 !important;
+        }
+
+        /* Y por si acaso, atacamos al padre badge también */
+        .user-role.badge {
+            color: #ffffff !important;
+        }
+    </style>
 {% endblock %}
 
 {% block dashboard_content %}
-    {# 
-       PUENTE DE BLOQUES:
-       'layouts/dashboard.html' espera un bloque llamado 'dashboard_content'.
-       Las vistas hijas de personal (como inicio_personal.html) usan 'block content'.
-       Aquí conectamos ambos para que el contenido se renderice en el lugar correcto.
-    #}
     {% block content %}{% endblock %}
 {% endblock %}
 
 {% block scripts %}
     {{ super() }}
-    {# Aquí puedes agregar scripts específicos para todo el módulo de personal si fuera necesario #}
 {% endblock %}

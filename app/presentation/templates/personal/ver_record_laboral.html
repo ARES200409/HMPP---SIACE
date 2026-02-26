@@ -1,0 +1,104 @@
+{% extends "personal/dashboard.html" %}
+
+{% block title %}Mi Récord Laboral - HMPP{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+
+    <div class="d-sm-flex align-items-center justify-content-between mb-4">
+        <h1 class="h3 mb-0 text-gray-800">
+            <i class="fas fa-history text-info me-2"></i>Mi Récord Laboral
+        </h1>
+        <p class="text-muted small mb-0">
+                <i class="bi bi-shield-check"></i> Información oficial protegida por la Ley 29733 de Protección de Datos Personales.
+            </p>
+        <a href="{{ url_for('personal.inicio') }}" class="btn btn-sm btn-secondary shadow-sm">
+            <i class="fas fa-arrow-left fa-sm text-white-50"></i> Volver al Panel
+        </a>
+    </div>
+
+    <div class="card shadow mb-4 border-left-info">
+        <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-primary">Historial de Documentos y Resoluciones</h6>
+        </div>
+        
+        <div class="card-body">
+            {% if historial %}
+            <div class="table-responsive">
+                <table class="table table-bordered table-hover" width="100%" cellspacing="0">
+                    <thead class="bg-light text-dark">
+                        <tr>
+                            <th width="40%">Descripción / Documento</th>
+                            <th>Fecha Inicio</th>
+                            <th>Fecha Fin</th>
+                            <th class="text-center">Estado</th>
+                            <th class="text-center">Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in historial %}
+                        <tr>
+                            <td>
+                                <div class="font-weight-bold text-dark mb-1">
+                                    {{ item.descripcion }}
+                                </div>
+                                {% if item.nombre_archivo %}
+                                    <div class="small text-muted">
+                                        {% if '.pdf' in item.nombre_archivo.lower() %}
+                                            <i class="fas fa-file-pdf text-danger me-1"></i>
+                                        {% elif '.xls' in item.nombre_archivo.lower() %}
+                                            <i class="fas fa-file-excel text-success me-1"></i>
+                                        {% else %}
+                                            <i class="fas fa-file-alt text-secondary me-1"></i>
+                                        {% endif %}
+                                        {{ item.nombre_archivo }}
+                                    </div>
+                                {% endif %}
+                            </td>
+                            
+                            <td class="align-middle">{{ item.fecha_inicio }}</td>
+                            <td class="align-middle">
+                                {% if item.fecha_fin_vencimiento %}
+                                    {{ item.fecha_fin_vencimiento }}
+                                {% else %}
+                                    <span class="badge bg-success">Vigente</span>
+                                {% endif %}
+                            </td>
+
+                            <td class="text-center align-middle">
+                                {% if item.activo %}
+                                    <span class="badge bg-primary rounded-pill px-3">Registrado</span>
+                                {% else %}
+                                    <span class="badge bg-secondary rounded-pill px-3">Anulado</span>
+                                {% endif %}
+                            </td>
+
+                            <td class="text-center align-middle">
+                                {% if item.nombre_archivo %}
+                                    <a href="{{ url_for('personal.ver_archivo_record', id_record=item.id_record) }}" 
+                                       target="_blank" 
+                                       class="btn btn-sm btn-info shadow-sm font-weight-bold" 
+                                       title="Ver Archivo">
+                                        <i class="fas fa-eye me-1"></i> Ver
+                                    </a>
+                                {% else %}
+                                    <button class="btn btn-sm btn-light border" disabled>
+                                        <i class="fas fa-eye-slash text-gray-400"></i>
+                                    </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center py-5">
+                <i class="fas fa-folder-open fa-3x text-gray-300 mb-3"></i>
+                <h5 class="text-gray-600">No se encontraron registros.</h5>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

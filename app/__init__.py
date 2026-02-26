@@ -47,7 +47,7 @@ mail = Mail()
 # Seguridad: Crear instancias de Limiter y Talisman fuera de la factoría
 limiter = Limiter(
     key_func=get_remote_address,
-    default_limits=["200 per day", "50 per hour"] # Límites por defecto para todas las rutas
+    default_limits=["10000 per day", "2000 per hour"] # Límites por defecto para todas las rutas
 )
 talisman = Talisman()
 
@@ -179,31 +179,68 @@ def create_app():
         
         return {'csp_nonce': csp_nonce}
     
-    # --- FUNCIÓN PARA CONTAR SOLICITUDES PENDIENTES ---
+    # --- CONTEXT PROCESSOR: CONTADORES GLOBALES (BLINDADO v2) ---
     @app.context_processor
-    def inject_solicitudes_count():
-        """Inyecta la función solicitudes_pendientes_count() en todos los templates."""
-        def solicitudes_pendientes_count():
-            """Obtiene el número de solicitudes pendientes para mostrar en el badge del sidebar."""
-            # Solo calcular si el usuario está autenticado y tiene el rol apropiado
-            if not current_user.is_authenticated:
-                return 0
-            
-            # Solo mostrar el contador para AdministradorLegajos y Sistemas
-            if current_user.rol not in ['AdministradorLegajos', 'Sistemas']:
-                return 0
-            
+    def inject_counts():
+        """
+        Calcula contadores para 'Solicitudes' (Docs) y 'Modificación' (ARCO).
+        Incluye protección contra conexiones cerradas.
+        """
+        conteo_docs = 0
+        conteo_arco = 0
+        
+        # Verificar si el usuario está logueado
+        if not current_user.is_authenticated:
+            return dict(conteo_docs=0, conteo_arco=0)
+
+        # Definir roles permitidos
+        roles_admin = ['Administrador', 'Escalafon', 'Legajos', 'AdministradorEscalafon', 'AdministradorLegajos', 'RRHH', 'Sistemas']
+
+        if current_user.rol in roles_admin:
+            # 1. CONTAR SOLICITUDES DE DOCUMENTOS (Usando tu Servicio original)
             try:
                 solicitud_service = current_app.config.get('SOLICITUDES_SERVICE')
                 if solicitud_service:
-                    solicitudes = solicitud_service.get_all_pending()
-                    return len(solicitudes) if solicitudes else 0
-                return 0
+                    pendientes = solicitud_service.get_all_pending()
+                    if pendientes:
+                        conteo_docs = len(pendientes)
+            except Exception:
+                # Fallo silencioso para no romper la web
+                pass
+
+            # 2. CONTAR SOLICITUDES ARCO (SQL Directo + PROTECCIÓN)
+            try:
+                from app.database import get_db_read
+                from flask import g
+                
+                # --- TRUCO DE RESURRECCIÓN ---
+                # Si la conexión existe pero está cerrada (muerta), la borramos
+                # para obligar a get_db_read() a crear una nueva y fresca.
+                if hasattr(g, 'db_conn') and g.db_conn:
+                    try:
+                        # Intentamos crear un cursor para ver si está viva
+                        g.db_conn.cursor()
+                    except:
+                        # Si falla, es que estaba cerrada. La matamos para revivirla.
+                        g.db_conn = None
+                # -----------------------------
+
+                conn = get_db_read()
+                cursor = conn.cursor()
+                cursor.execute("SELECT COUNT(*) FROM solicitudes_arco WHERE estado = 'PENDIENTE'")
+                row = cursor.fetchone()
+                if row:
+                    conteo_arco = row[0]
+                
+                # ¡IMPORTANTE!: NO cerramos la conexión aquí (conn.close) 
+                # porque Flask la necesita para seguir dibujando la página.
+
             except Exception as e:
-                current_app.logger.error(f"Error al obtener el conteo de solicitudes pendientes: {e}")
-                return 0
-        
-        return {'solicitudes_pendientes_count': solicitudes_pendientes_count}
+                # Si algo falla aquí, solo imprimimos en consola negra, no mostramos error al usuario
+                print(f"⚠️ Error silencioso en contador ARCO: {e}")
+
+        # Retornamos ambas variables
+        return dict(conteo_docs=conteo_docs, conteo_arco=conteo_arco)
 
     with app.app_context():
         # --- Inyección de Dependencias (sin cambios) ---
@@ -278,12 +315,23 @@ def create_app():
         # La lógica de redirección ahora está centralizada en la ruta raíz ('/').
 
 
+        # --- MANEJADOR DE ERRORES GLOBAL ---
         @app.errorhandler(Exception)
         def handle_exception(e):
-            """Atrapa cualquier error en la HMPP y lo guarda en la BD."""
-            registrar_error_automatico(e)
-            # Retornamos 'e' para que Flask siga mostrando la página de error al usuario
-            return e
+            """Atrapa cualquier error y lo muestra en pantalla sin romper Flask."""
+            # Registramos el error en la base de datos (si es posible)
+            try:
+                registrar_error_automatico(e)
+            except:
+                pass # Si falla el registro, no importa, seguimos
+            
+            # Imprimimos en la consola negra para que tú lo veas
+            print(f"🔥 ERROR CRÍTICO CAPTURADO: {e}")
+            
+            # Devolvemos el error como TEXTO (str) con código 500
+            # Esto arregla el TypeError que estás viendo
+            return f"⚠️ Ocurrió un error en el sistema: {str(e)}", 500
+            
         
     return app
 

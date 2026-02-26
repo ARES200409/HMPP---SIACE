@@ -72,7 +72,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 labels: dataEstado.map(d => d.estado),
                 datasets: [{
                     data: dataEstado.map(d => d.cantidad),
-                    backgroundColor: ['#4BC0C0', '#FF6384'],
+                    backgroundColor: dataEstado.map(d => 
+                        (d.estado === 'Activos' || d.estado === 'Activo') ? '#4BC0C0' : '#FF6384'
+                    ),
                     borderWidth: 2
                 }]
             },
@@ -98,7 +100,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 datasets: [{
                     label: 'Personal',
                     data: dataSexo.map(d => d.cantidad),
-                    backgroundColor: ['#36A2EB', '#FF6384', '#FFCE56']
+                    backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56']
                 }]
             },
             options: {

@@ -1,9 +1,8 @@
-{% extends "personal/dashboard.html" %}
+{% extends "layouts/dashboard.html" %}
 
 {% block title %}Solicitar Cancelación - DIRESA{% endblock %}
 
-{# CORRECCIÓN: Usar 'content' #}
-{% block content %}
+{% block dashboard_content %}
 <div class="container-fluid mt-4">
     <div class="row mb-4">
         <div class="col-md-8">
@@ -33,41 +32,41 @@
 
     <div class="row">
         <div class="col-md-8">
-            <div class="card">
-                <div class="card-header bg-light">
-                    <h6 class="mb-0">Formulario de Cancelación</h6>
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white">
+                    <h6 class="mb-0"><i class="bi bi-ui-checks"></i> Formulario de Cancelación</h6>
                 </div>
                 <div class="card-body">
                     <form method="POST" class="needs-validation" novalidate>
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
 
                         <div class="mb-4">
-                            <label class="form-label"><strong>¿Qué datos deseas cancelar?</strong></label>
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="datos_cancelar"
-                                    value="email_personal" id="email_personal">
-                                <label class="form-check-label" for="email_personal">
+                            <label class="form-label text-primary"><strong>¿Qué datos deseas cancelar?</strong></label>
+                            
+                            <div class="form-check p-2 border rounded mb-2 bg-light">
+                                <input class="form-check-input ms-1" type="checkbox" name="check_email" id="email_personal">
+                                <label class="form-check-label ms-2" for="email_personal">
                                     Email personal
                                 </label>
                             </div>
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="datos_cancelar" value="telefono"
-                                    id="telefono">
-                                <label class="form-check-label" for="telefono">
+
+                            <div class="form-check p-2 border rounded mb-2 bg-light">
+                                <input class="form-check-input ms-1" type="checkbox" name="check_telefono" id="telefono">
+                                <label class="form-check-label ms-2" for="telefono">
                                     Teléfono de contacto
                                 </label>
                             </div>
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="datos_cancelar" value="direccion"
-                                    id="direccion">
-                                <label class="form-check-label" for="direccion">
+
+                            <div class="form-check p-2 border rounded mb-2 bg-light">
+                                <input class="form-check-input ms-1" type="checkbox" name="check_direccion" id="direccion">
+                                <label class="form-check-label ms-2" for="direccion">
                                     Dirección domiciliaria
                                 </label>
                             </div>
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="datos_cancelar"
-                                    value="datos_sensibles" id="datos_sensibles">
-                                <label class="form-check-label" for="datos_sensibles">
+
+                            <div class="form-check p-2 border rounded mb-2 bg-light">
+                                <input class="form-check-input ms-1" type="checkbox" name="check_sensibles" id="datos_sensibles">
+                                <label class="form-check-label ms-2" for="datos_sensibles">
                                     Datos de salud u otros datos sensibles
                                 </label>
                             </div>
@@ -82,24 +81,24 @@
                             </small>
                         </div>
 
-                        <div class="alert alert-warning mb-3">
+                        <div class="alert alert-warning mb-3 border-start border-warning border-4">
                             <strong>
                                 <i class="bi bi-exclamation-circle"></i> Importante
                             </strong>
-                            <p class="mb-0">
+                            <p class="mb-0 mt-1 small">
                                 Tu solicitud será procesada en un plazo máximo de 5 días hábiles.
                                 Ten en cuenta que algunos datos no pueden ser cancelados si son necesarios
-                                para cumplir obligaciones legales o fiscales.
+                                para cumplir obligaciones legales o fiscales con la DIRESA.
                             </p>
                         </div>
 
-                        <div class="d-flex gap-2">
-                            <button type="submit" class="btn btn-danger">
-                                <i class="bi bi-send"></i> Enviar Solicitud
-                            </button>
+                        <div class="d-flex gap-2 justify-content-end">
                             <a href="{{ url_for('personal.inicio') }}" class="btn btn-outline-secondary">
                                 Cancelar
                             </a>
+                            <button type="submit" class="btn btn-danger">
+                                <i class="bi bi-send"></i> Enviar Solicitud
+                            </button>
                         </div>
                     </form>
                 </div>
@@ -107,30 +106,30 @@
         </div>
 
         <div class="col-md-4">
-            <div class="card mb-3 border-start border-danger border-5">
+            <div class="card mb-3 border-start border-danger border-5 shadow-sm">
                 <div class="card-header bg-light">
-                    <h6 class="mb-0">
+                    <h6 class="mb-0 fw-bold text-danger">
                         <i class="bi bi-info-circle"></i> ¿Qué es la Cancelación?
                     </h6>
                 </div>
-                <div class="card-body small">
+                <div class="card-body small text-muted">
                     <p>
                         La cancelación implica la eliminación o anonimización de tus datos personales
-                        en el registro de DIRESA, cuando ya no sean necesarios para los fines para los
+                        en el registro de la <strong>DIRESA</strong>, cuando ya no sean necesarios para los fines para los
                         cuales fueron recabados.
                     </p>
                 </div>
             </div>
 
-            <div class="card border-start border-info border-5">
+            <div class="card border-start border-info border-5 shadow-sm">
                 <div class="card-header bg-light">
-                    <h6 class="mb-0">
+                    <h6 class="mb-0 fw-bold text-info">
                         <i class="bi bi-shield-check"></i> Restricciones
                     </h6>
                 </div>
-                <div class="card-body small">
+                <div class="card-body small text-muted">
                     <p><strong>Estos datos NO pueden cancelarse:</strong></p>
-                    <ul class="mb-0">
+                    <ul class="mb-0 ps-3">
                         <li>DNI y documentos de identidad</li>
                         <li>Nombres y apellidos</li>
                         <li>Datos de nómina y fiscales</li>
@@ -140,9 +139,9 @@
                 </div>
             </div>
 
-            <div class="alert alert-info mt-3 small">
-                <strong>Art. 10 Ley 29733:</strong>
-                <p class="mb-0">
+            <div class="alert alert-info mt-3 small shadow-sm">
+                <strong><i class="bi bi-book"></i> Art. 10 Ley 29733:</strong>
+                <p class="mb-0 mt-1">
                     Tienes derecho a solicitar la cancelación de tus datos cuando hayan dejado de ser
                     necesarios para los fines para los cuales fueron recabados.
                 </p>
@@ -151,5 +150,21 @@
     </div>
 </div>
 
-<script src="{{ url_for('static', filename='js/form-confirmations.js') }}" nonce="{{ csp_nonce() }}"></script>
+<script nonce="{{ csp_nonce() }}">
+    // Script simple para validación visual de Bootstrap
+    (function () {
+        'use strict'
+        var forms = document.querySelectorAll('.needs-validation')
+        Array.prototype.slice.call(forms)
+            .forEach(function (form) {
+                form.addEventListener('submit', function (event) {
+                    if (!form.checkValidity()) {
+                        event.preventDefault()
+                        event.stopPropagation()
+                    }
+                    form.classList.add('was-validated')
+                }, false)
+            })
+    })()
+</script>
 {% endblock %}

@@ -1,0 +1,7 @@
+
+PARA GENERAR PDF
+
+https://github.com/tschoonj/GTK-for-Windows-Runtime-Environment-Installer/releases
+
+Ingresar al link y descargar:
+gtk3-runtime-3.24.31-2022-01-04-ts-win64.exe (o similar )

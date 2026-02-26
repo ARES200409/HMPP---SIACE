@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<style>
+    /* 1. CONFIGURACIÓN DE PÁGINA Y REPETICIÓN DE ELEMENTOS */
+    @page {
+        size: A4 landscape;
+        margin: 4.5cm 1cm 2.5cm 1cm;
+
+        @top-center {
+            content: element(headerRunning);
+            width: 100%;
+        }
+
+        @bottom-left {
+            content: "Planilla_" "{{ cabecera.tipo_planilla_completo or cabecera.tipo_planilla }}";
+            font-family: Arial, sans-serif;
+            font-size: 9px;
+            color: #444;
+            border-top: 0.5pt solid #ccc;
+            padding-top: 5px;
+        }
+
+        @bottom-right {
+            content: "HMPP - Sistema de Escalafón y Planillas | Impreso el: {{ today.strftime('%d/%m/%Y %H:%M') }} | Pag. " counter(page);
+            font-family: Arial, sans-serif;
+            font-size: 9px;
+            color: #444;
+            border-top: 0.5pt solid #ccc;
+            padding-top: 5px;
+        }
+    }
+
+    body { font-family: Arial, sans-serif; font-size: 10px; color: #000; margin: 0; padding: 0; }
+
+    /* 2. ENCABEZADO "RUNNING" */
+    #header-container {
+        position: running(headerRunning);
+        width: 100%;
+        border-bottom: 2.5px solid #000;
+        padding-bottom: 8px;
+    }
+
+    .logo-box { width: 75px; text-align: center; vertical-align: top; }
+    .p-number-top { display: block; text-align: center; font-weight: bold; font-size: 10px; margin-bottom: 2px; }
+    .p-number-top::after { content: "P - " counter(page); }
+
+    .header-left-text { vertical-align: top; padding-left: 10px; text-align: left; }
+    .company-name { font-size: 16px; font-weight: bold; text-transform: uppercase; margin: 0; line-height: 1.1; }
+    .doc-title { font-size: 13px; font-weight: bold; text-transform: uppercase; margin-top: 4px; display: block; }
+    .mgmt-text { font-size: 13px; font-weight: bold; margin-top: 4px; display: block; }
+
+    .header-right-period { text-align: right; vertical-align: bottom; padding-bottom: 5px; }
+    .period-text { font-size: 16px; font-weight: bold; text-transform: uppercase; }
+
+    /* 3. TABLA PRINCIPAL (LA SÁBANA) */
+    .main-table { width: 100%; border-collapse: collapse; }
+    .main-table th { border: 1px solid #000; padding: 5px 2px; font-size: 8px; background-color: #e0e0e0; text-align: center; text-transform: uppercase; }
+    .main-table td { border: 1px solid #888; padding: 3px 3px; vertical-align: middle; text-align: right; font-size: 10px; }
+    .col-texto { text-align: left !important; }
+    
+    .small-text { font-size: 6px; color: #333; display: block; font-style: italic; line-height: 1.1; margin-top: 3px; text-align: right; }
+
+    /* 4. RESUMEN GENERAL */
+    .resumen-section { width: 100%; border-top: 2px solid #000; padding-top: 10px; margin-top: 30px; page-break-inside: avoid; }
+    .resumen-title { font-size: 11px; font-weight: bold; text-decoration: underline; margin-bottom: 8px; display: block; }
+    
+    .resumen-table { width: 100%; border-collapse: collapse; font-size: 9px; }
+    .resumen-table td { padding: 4px 5px; vertical-align: top; }
+    .resumen-label { font-weight: bold; width: 140px; text-transform: uppercase; }
+    
+    .resumen-data-grid { display: inline-block; text-align: center; margin-right: 12px; min-width: 50px; }
+    .data-label { display: block; font-weight: bold; font-size: 8px; border-bottom: 0.5pt solid #ccc; margin-bottom: 2px; }
+    .data-value { display: block; font-size: 9px; }
+
+    .resumen-total-label { text-align: right; font-weight: bold; padding-right: 10px; width: 170px; }
+    .resumen-total-value { text-align: right; font-weight: bold; border-bottom: 1px double #000; width: 100px; font-size: 10px; }
+
+    /* 5. FIRMAS UNIFORMES */
+    .signatures-table { width: 100%; margin-top: 70px; table-layout: fixed; border-collapse: collapse; page-break-inside: avoid; }
+    .sig-box { text-align: center; vertical-align: top; padding: 0 10px; }
+    .sig-line { border-top: 1.5px solid #000; padding-top: 8px; font-size: 10px; font-weight: bold; width: 85%; margin: 0 auto; }
+    .sig-subtext { font-size: 8px; font-weight: normal; display: block; margin-top: 2px; }
+</style>
+</head>
+<body>
+
+{# --- LÓGICA DE AUTO-RELLENADO Y BLINDAJE --- #}
+{% set ns = namespace(s_movil=0.0, s_sind=0.0, s_agui=0.0) %}
+{% for d in detalles %}
+    {% set ns.s_movil = ns.s_movil + (d.d_viatico|default(0)|float) %}
+    {% set ns.s_sind = ns.s_sind + (d.desc_sindicato|default(0)|float) %}
+    {% set ns.s_agui = ns.s_agui + (d.tot_aguinaldos|default(0)|float) %}
+{% endfor %}
+
+{% set s_sueldo = (detalles|sum(attribute='remuneracion_mensual'))|float %}
+{% set s_afam = (detalles|sum(attribute='asig_familiar'))|float %}
+{% set s_reint = (detalles|sum(attribute='reintegros'))|float %}
+{% set s_otros_ing = (detalles|sum(attribute='otros_ingresos'))|float %}
+{% set total_ingresos_calc = s_sueldo + s_afam + ns.s_movil + s_reint + s_otros_ing %}
+
+{% set s_pens = (detalles|sum(attribute='sistema_pension'))|float %}
+{% set s_renta = (detalles|sum(attribute='renta_5ta'))|float %}
+{% set s_vida = (detalles|sum(attribute='essalud_vida'))|float %}
+{% set s_jud = (detalles|sum(attribute='judicial'))|float %}
+{% set s_otros_desc = (detalles|sum(attribute='prestamos'))|float %}
+{% set s_faltas = (detalles|sum(attribute='dscto_tardanza'))|float %}
+{% set total_descuentos_calc = s_pens + ns.s_sind + s_renta + s_vida + s_jud + s_otros_desc + s_faltas %}
+
+{% set s_essalud = (detalles|sum(attribute='essalud_9'))|float %}
+{% set s_sctrs = (detalles|sum(attribute='sctr_salud'))|float %}
+{% set s_sctrp = (detalles|sum(attribute='sctr_pension'))|float %}
+{% set s_cts = (detalles|sum(attribute='cts'))|float %}
+{% set total_aportes_calc = s_essalud + s_sctrs + s_sctrp + s_cts %}
+
+    <div id="header-container">
+        <table style="width: 100%; border: none;">
+            <tr>
+                <td class="logo-box">
+                    <span class="p-number-top"></span>
+                    <img src="{{ url_for('static', filename='img/muni_logo.png', _external=True) }}" style="width: 60px;">
+                </td>
+                <td class="header-left-text">
+                    <div class="company-name">HONORABLE MUNICIPALIDAD PROVINCIAL DE PASCO</div>
+                    <div class="doc-title">PLANILLA UNICA DE PAGO - {{ cabecera.tipo_planilla_completo or cabecera.tipo_planilla }}</div>
+                    <span class="mgmt-text">GESTIÓN MUNICIPAL</span>
+                    <span class="mgmt-text">RUC: 20176735725</span>
+                </td>
+                <td class="header-right-period">
+                    <span class="period-text">PERIODO: {{ cabecera.mes_nombre|upper }} {{ cabecera.anio }}</span>
+                </td>
+            </tr>
+        </table>
+    </div>
+
+    <table class="main-table">
+        <thead>
+            <tr>
+                <th rowspan="2" style="width: 15px;">N°</th>
+                <th rowspan="2" style="width: 160px;">DATOS DEL TRABAJADOR</th>
+                <th rowspan="2" style="width: 60px;">DNI / CTA</th>
+                <th rowspan="2" style="width: 40px;">RÉGIMEN</th>
+                <th colspan="2" style="background-color: #d0d0d0;">DÍAS</th>
+                <th colspan="6" style="background-color: #f1f8e9;">INGRESOS (S/.)</th> 
+                <th colspan="8" style="background-color: #fff9f9;">DESCUENTOS (S/.)</th> 
+                <th rowspan="2" style="background-color: #fff3e0; width: 65px;">AGUI.</th>
+                <th rowspan="2" style="background-color: #e3f2fd; width: 50px;">NETO A PAGAR</th>
+                <th colspan="5" style="background-color: #fff8e1;">APORTES (EMPLEADOR)</th>
+            </tr>
+            <tr>
+                <th style="width: 20px;">LAB.</th><th style="width: 20px;">FALT.</th>
+                <th>Sueldo</th><th>A.Fam</th><th>Movil.</th><th>Reint.</th>
+                <th style="width: 80px;">Otros</th><th>TOTAL</th>
+                <th>Tard.</th><th>Pens.</th><th>Sind.</th><th>4ta/5ta</th><th>Vida</th><th>Jud.</th>
+                <th style="width: 70px;">Otros</th><th>TOTAL</th>
+                <th>Essalud</th><th>SCTR-S</th><th>SCTR-P</th><th>CTS</th><th>TOTAL</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for d in detalles %}
+            <tr>
+                <td style="text-align: center;">{{ loop.index }}</td>
+                <td class="col-texto">
+                    <strong>{{ d.nombre_completo }}</strong><br>
+                    <span style="font-size: 8px; font-weight: bold;">{{ d.cargo }}</span>
+                    {% if d.observaciones %}<span class="small-text" style="text-align: left;">Obs: {{ d.observaciones }}</span>{% endif %}
+                </td>
+                <td class="col-texto" style="text-align: center;">{{ d.dni }}<br><span style="font-size: 8px;">{{ d.cuenta_bancaria }}</span></td>
+                <td style="text-align: center;">{{ d.regimen_pensionario }}</td>
+                <td style="text-align: center; font-weight: bold;">{{ (d.dias_laborados|int) - (d.dias_falta|int) }}</td>
+                <td style="text-align: center; color: red;">{{ d.dias_falta or 0 }}</td>
+                
+                <td>{{ "%.2f"|format(d.remuneracion_mensual) }}</td>
+                <td>{{ "%.2f"|format(d.asig_familiar) }}</td>
+                <td>{{ "%.2f"|format(d.d_viatico|default(0)|float) }}</td> 
+                <td>{{ "%.2f"|format(d.reintegros) }}</td>
+                <td>
+                    {{ "%.2f"|format(d.otros_ingresos) }}
+                    {% if d.glosa_bonos %}<span class="small-text">{{ d.glosa_bonos }}</span>{% endif %}
+                </td>
+                <td style="background-color: #f5f5f5; font-weight: bold;">{{ "%.2f"|format(d.total_remuneracion) }}</td>
+                
+                <td>{{ "%.2f"|format(d.dscto_tardanza) }}</td>
+                <td>{{ "%.2f"|format(d.sistema_pension) }}</td>
+                <td>{{ "%.2f"|format(d.desc_sindicato|default(0)|float) }}</td> 
+                <td>{{ "%.2f"|format(d.renta_5ta) }}</td>
+                <td>{{ "%.2f"|format(d.essalud_vida) }}</td>
+                <td>{{ "%.2f"|format(d.judicial) }}</td>
+                <td>
+                    {{ "%.2f"|format(d.prestamos) }}
+                    {% if d.glosa_otros %}<span class="small-text">{{ d.glosa_otros }}</span>{% endif %}
+                </td>
+                <td style="background-color: #f5f5f5; font-weight: bold;">{{ "%.2f"|format(d.total_descuentos) }}</td>
+                
+                <td style="background-color: #fff3e0;">
+                    {{ "%.2f"|format(d.tot_aguinaldos|default(0)|float) }}
+                    {% if d.glosa_aguinaldos %}
+                         <span class="small-text">{{ d.glosa_aguinaldos }}</span>
+                    {% endif %}
+                </td>
+
+                <td style="background-color: #e3f2fd; font-weight: bold; border: 1.5px solid #000;">
+                    {{ "%.2f"|format(d.neto_pagar) }}
+                </td>
+                
+                <td>{{ "%.2f"|format(d.essalud_9) }}</td>
+                <td>{{ "%.2f"|format(d.sctr_salud) }}</td>
+                <td>{{ "%.2f"|format(d.sctr_pension) }}</td>
+                <td>{{ "%.2f"|format(d.cts) }}</td>
+                <td style="background-color: #f5f5f5;">{{ "%.2f"|format(d.total_aportes) }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="resumen-section">
+        <span class="resumen-title">RESUMEN GENERAL : &nbsp;&nbsp;&nbsp;&nbsp; GESTIÓN MUNICIPAL</span>
+        <table class="resumen-table">
+            <tr>
+                <td class="resumen-label">TOTAL INGRESOS :</td>
+                <td>
+                    <div class="resumen-data-grid"><span class="data-label">SUELDO</span><span class="data-value">{{ "%.2f"|format(s_sueldo) }}</span></div>
+                    <div class="resumen-data-grid"><span class="data-label">A.FAM</span><span class="data-value">{{ "%.2f"|format(s_afam) }}</span></div>
+                    <div class="resumen-data-grid"><span class="data-label">MOVIL</span><span class="data-value">{{ "%.2f"|format(ns.s_movil) }}</span></div>
+                    <div class="resumen-data-grid"><span class="data-label">REINT</span><span class="data-value">{{ "%.2f"|format(s_reint) }}</span></div>
+                    <div class="resumen-data-grid"><span class="data-label">OTROS</span><span class="data-value">{{ "%.2f"|format(s_otros_ing) }}</span></div>
+                </td>
+                <td class="resumen-total-label">TOTAL INGRESOS :</td>
+                <td class="resumen-total-value">{{ "%.2f"|format(total_ingresos_calc) }}</td>
+            </tr>
+            <tr>
+                <td class="resumen-label">TOTAL DESCUENTOS :</td>
+                <td>
+                    <div class="resumen-data-grid"><span class="data-label">DPENS</span><span class="data-value">{{ "%.2f"|format(s_pens) }}</span></div>
+                    <div class="resumen-data-grid"><span class="data-label">SIND</span><span class="data-value">{{ "%.2f"|format(ns.s_sind) }}</span></div>
+                    <div class="resumen-data-grid"><span class="data-label">D4/5TA</span><span class="data-value">{{ "%.2f"|format(s_renta) }}</span></div>
+                    <div class="resumen-data-grid"><span class="data-label">DVIDA</span><span class="data-value">{{ "%.2f"|format(s_vida) }}</span></div>
+                    <div class="resumen-data-grid"><span class="data-label">DJUD</span><span class="data-value">{{ "%.2f"|format(s_jud) }}</span></div>
+                    <div class="resumen-data-grid"><span class="data-label">DOTROS</span><span class="data-value">{{ "%.2f"|format(s_otros_desc) }}</span></div>
+                    <div class="resumen-data-grid"><span class="data-label">DFALT</span><span class="data-value">{{ "%.2f"|format(s_faltas) }}</span></div>
+                </td>
+                <td class="resumen-total-label">TOTAL DESCUENTOS :</td>
+                <td class="resumen-total-value">{{ "%.2f"|format(total_descuentos_calc) }}</td>
+            </tr>
+            <tr>
+                <td colspan="2"></td>
+                <td class="resumen-total-label" style="padding-top: 5px;">TOTAL AGUINALDOS :</td>
+                <td class="resumen-total-value" style="font-size: 11px; padding-top: 5px; color: #8B4513;">{{ "%.2f"|format(ns.s_agui) }}</td>
+            </tr>
+            <tr>
+                <td colspan="2"></td>
+                <td class="resumen-total-label" style="padding-top: 5px;">NETO A PAGAR :</td>
+                <td class="resumen-total-value" style="font-size: 11px; padding-top: 5px;">{{ "%.2f"|format(total_ingresos_calc - total_descuentos_calc) }}</td>
+            </tr>
+            <tr>
+                <td class="resumen-label">TOTAL APORTACIONES :</td>
+                <td>
+                    <div class="resumen-data-grid"><span class="data-label">ESSALUD</span><span class="data-value">{{ "%.2f"|format(s_essalud) }}</span></div>
+                    <div class="resumen-data-grid"><span class="data-label">SCTR-S</span><span class="data-value">{{ "%.2f"|format(s_sctrs) }}</span></div>
+                    <div class="resumen-data-grid"><span class="data-label">SCTR-P</span><span class="data-value">{{ "%.2f"|format(s_sctrp) }}</span></div>
+                    <div class="resumen-data-grid"><span class="data-label">CTS</span><span class="data-value">{{ "%.2f"|format(s_cts) }}</span></div>
+                </td>
+                <td class="resumen-total-label">TOTAL APORTACIONES :</td>
+                <td class="resumen-total-value">{{ "%.2f"|format(total_aportes_calc) }}</td>
+            </tr>
+            <tr>
+                <td colspan="2"></td>
+                <td class="resumen-total-label" style="font-size: 11px; padding-top: 5px;">TOTAL COSTO PLANILLA :</td>
+                <td class="resumen-total-value" style="font-size: 11px; padding-top: 5px;">{{ "%.2f"|format(total_ingresos_calc + total_aportes_calc + ns.s_agui) }}</td>
+            </tr>
+        </table>
+    </div>
+
+    <table class="signatures-table">
+        <tr>
+            <td class="sig-box">
+                <div class="sig-line">
+                    ELABORADO POR
+                    <span class="sig-subtext">ESCALAFÓN Y REMUNERACIONES</span>
+                </div>
+            </td>
+            <td class="sig-box">
+                <div class="sig-line">
+                    REVISADO POR
+                    <span class="sig-subtext">JEFE DE RR.HH.</span>
+                </div>
+            </td>
+            <td class="sig-box">
+                <div class="sig-line">
+                    V° B°
+                    <span class="sig-subtext">GERENCIA MUNICIPAL</span>
+                </div>
+            </td>
+        </tr>
+    </table>
+
+</body>
+</html>

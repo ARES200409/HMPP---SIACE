@@ -1,0 +1,153 @@
+{% extends 'layouts/dashboard.html' %}
+{% block title %}Planilla Mensual - HMPP{% endblock %}
+
+{% block dashboard_content %}
+
+{# 1. Validación de seguridad: Si no hay datos de cabecera, mostramos error amigable #}
+{% if planilla %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h3 class="text-primary mb-0"><i class="bi bi-people-fill me-2"></i>Planilla de Pagos</h3>
+        <p class="text-muted small mb-0">
+            <strong>{{ planilla.tipo_planilla|default('General') }}</strong> | 
+            Periodo: {{ planilla.mes_nombre|default('---') }} {{ planilla.anio|default('') }}
+        </p>
+    </div>
+    <div>
+        <a href="{{ url_for('rrhh.gestionar_planillas') }}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> Volver
+        </a>
+        
+        {# BOTÓN DE IMPRESIÓN OFICIAL (GATILLO DEL PROCESO) #}
+        {# Al hacer click: 1. Abre PDF 2. Marca la planilla como impresa en BD #}
+        <a href="{{ url_for('rrhh.imprimir_planilla_oficial', id_planilla=planilla.id_planilla) }}" 
+           class="btn btn-danger ms-2 shadow-sm fw-bold" 
+           target="_blank"
+           onclick="setTimeout(function(){ location.reload(); }, 2000);">
+            <i class="bi bi-printer-fill me-2"></i> IMPRIMIR LISTA OFICIAL
+        </a>
+    </div>
+</div>
+
+{# 2. Alerta de Estado: Muestra candado si está cerrada #}
+{% if planilla.estado == 'CERRADA' %}
+<div class="alert alert-danger d-flex align-items-center shadow-sm mb-4" role="alert">
+    <i class="bi bi-lock-fill fs-4 me-3"></i>
+    <div>
+        <strong>MODO SOLO LECTURA:</strong> Esta planilla ha sido finalizada (CERRADA). 
+        <br>La edición está bloqueada para proteger la integridad de los datos.
+    </div>
+</div>
+{% endif %}
+
+<div class="card shadow border-0">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>#</th>
+                        <th>Trabajador</th>
+                        <th>Cargo</th>
+                        <th>Sistema</th>
+                        <th class="text-end text-success">Ingresos</th>
+                        <th class="text-end text-danger">Descuentos</th>
+                        <th class="text-end text-primary" title="Essalud + SCTR + CTS">Aportes (HMPP)</th>
+                        <th class="text-end bg-primary text-white">NETO A PAGAR</th>
+                        <th class="text-center">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in detalles %}
+                    <tr>
+                        <td class="fw-bold">{{ loop.index }}</td>
+                        <td>
+                            <div class="fw-bold text-uppercase">{{ p.nombre_completo|default('SIN NOMBRE') }}</div>
+                            <small class="text-muted">DNI: {{ p.dni_trabajador|default('---') }}</small>
+                        </td>
+                        <td class="small">{{ p.cargo_actual|truncate(30)|default('-') }}</td>
+                        <td>
+                            <span class="badge bg-light text-dark border">{{ p.sistema_pensionario|default('---') }}</span>
+                        </td>
+                        
+                        {# COLUMNA INGRESOS (Blindada) #}
+                        <td class="text-end text-success fw-bold">
+                            S/. {{ "%.2f"|format(p.total_ingresos|default(0)|float) }}
+                        </td>
+                        
+                        {# COLUMNA DESCUENTOS (Blindada) #}
+                        <td class="text-end text-danger fw-bold">
+                            S/. {{ "%.2f"|format(p.total_descuentos|default(0)|float) }}
+                        </td>
+
+                        {# COLUMNA APORTES (Suma Blindada con CTS) #}
+                        <td class="text-end text-primary fw-bold">
+                            {# 1. Preparamos las variables convirtiendo a float #}
+                            {% set aporte_essalud = p.aporte_essalud|default(0)|float %}
+                            {% set aporte_sctr_onp = p.sctr_onp|default(0)|float %}
+                            {% set aporte_sctr = p.sctr|default(0)|float %}
+                            {% set aporte_cts = p.cts|default(0)|float %}
+                            
+                            {# 2. Sumamos TODO incluyendo CTS #}
+                            S/. {{ "%.2f"|format(aporte_essalud + aporte_sctr_onp + aporte_sctr + aporte_cts) }}
+                        </td>
+
+                        {# COLUMNA NETO (Blindada) #}
+                        <td class="text-end bg-primary text-white fw-bold lead" style="font-size: 1.1rem;">
+                            S/. {{ "%.2f"|format(p.neto_pagar|default(0)|float) }}
+                        </td>
+                        
+                        <td class="text-center">
+                            <div class="btn-group shadow-sm">
+                                
+                                {# Lógica de Botones: Editar solo si está ABIERTA #}
+                                {% if planilla.estado == 'ABIERTA' %}
+                                    <a href="{{ url_for('rrhh.editar_ficha_individual', id_detalle=p.id_detalle) }}" 
+                                       class="btn btn-primary btn-sm" title="Editar Ficha">
+                                        <i class="bi bi-pencil-square"></i>
+                                    </a>
+                                {% else %}
+                                    <button class="btn btn-secondary btn-sm" disabled title="Planilla cerrada">
+                                        <i class="bi bi-lock-fill"></i>
+                                    </button>
+                                {% endif %}
+
+                                {# Lógica de Botones: Ver Boleta solo si existe fecha de generación #}
+                                {% if p.fecha_generacion_boleta %}
+                                    <a href="{{ url_for('rrhh.ver_boleta_archivada', id_detalle=p.id_detalle) }}" 
+                                       target="_blank" class="btn btn-warning btn-sm text-dark" title="Ver Boleta">
+                                        <i class="bi bi-eye-fill"></i>
+                                    </a>
+                                {% else %}
+                                    <button type="button" class="btn btn-secondary btn-sm" disabled title="Boleta no generada">
+                                        <i class="bi bi-eye-slash"></i>
+                                    </button>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="9" class="text-center py-5 text-muted">
+                            <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                            No hay trabajadores registrados en esta planilla.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% else %}
+{# Fallback: Si el ID de planilla no existe #}
+<div class="alert alert-warning text-center my-5 shadow-sm">
+    <i class="bi bi-exclamation-triangle-fill fs-1 d-block mb-3 text-warning"></i>
+    <h4>No se pudo cargar la planilla</h4>
+    <p>La planilla solicitada no existe o ha sido eliminada.</p>
+    <a href="{{ url_for('rrhh.gestionar_planillas') }}" class="btn btn-warning mt-2">Volver al Listado</a>
+</div>
+{% endif %}
+
+{% endblock %}

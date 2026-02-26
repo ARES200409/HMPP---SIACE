@@ -633,8 +633,10 @@ class SqlServerPersonalRepository(IPersonalRepository):
 
     def registrar_contrato_inicial(self, form_data, file_bytes, filename):
         """
-        Registra el contrato, activa al trabajador (verde), actualiza su unidad/cargo 
-        y crea el hito de apertura con el PDF oficial en una sola transacción.
+        Registra la contratación inicial de forma estricta:
+        1. Actualiza el estado del personal (activo y asignación de cargo/unidad).
+        2. Inserta el contrato en 'dbo.contratos' incluyendo el PDF para el 'ojito'.
+        3. Crea el usuario solo si no existe para evitar el error de DNI duplicado.
         """
         from app.database.connector import get_db_write
         from datetime import datetime
@@ -642,68 +644,73 @@ class SqlServerPersonalRepository(IPersonalRepository):
         cursor = conn.cursor()
         
         try:
-            conn.autocommit = False  # 🛡️ Iniciamos transacción manual
-            ahora_sistema = datetime.now() # 🕒 Capturamos la hora real del servidor
+            conn.autocommit = False  # 🛡️ Iniciamos transacción manual para seguridad
+            ahora_sistema = datetime.now() 
 
-            # 🚀 1. ACTUALIZAR FICHA PRINCIPAL (dbo.personal)
-            # Actualizamos Cargo, Unidad y ponemos Estado = Activo (1) para que salga en verde
+            # 🚀 1. ACTUALIZAR FICHA MAESTRA (dbo.personal)
+            # Marcamos al trabajador como ACTIVO y actualizamos su cargo/unidad actual
             query_update_personal = """
-            UPDATE dbo.personal 
-            SET id_cargo = ?, 
-                id_unidad = ?, 
-                activo = 1 
-            WHERE id_personal = ?
+                UPDATE dbo.personal 
+                SET id_cargo = ?, 
+                    id_unidad = ?, 
+                    id_tipo_contrato = ?,
+                    activo = 1 
+                WHERE id_personal = ?
             """
             cursor.execute(query_update_personal, (
                 form_data['id_cargo'], 
                 form_data['id_unidad'], 
+                form_data['id_tipo_contrato'],
                 form_data['id_personal']
             ))
 
             # 🚀 2. INSERTAR CONTRATO (dbo.contratos)
+            # Se han incluido las columnas de archivo y auditoría para que funcione el 'ojito'
+            # y se vea la hora real de registro independientemente de la fecha de inicio.
             query_contrato = """
-            INSERT INTO dbo.contratos (
-                id_personal, id_tipo_contrato, id_cargo, fecha_inicio, fecha_fin, 
-                sueldo, resolucion, modalidad
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, 'Presencial')
+                INSERT INTO dbo.contratos (
+                    id_personal, id_tipo_contrato, fecha_inicio, fecha_fin, 
+                    sueldo, resolucion, id_cargo, modalidad,
+                    nombre_archivo_real, archivo_binario, fecha_registro_auditoria
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'Presencial', ?, ?, ?)
             """
             cursor.execute(query_contrato, (
-                form_data['id_personal'], form_data['id_tipo_contrato'], form_data['id_cargo'],
-                form_data['fecha_inicio'], form_data.get('fecha_fin'),
-                form_data['sueldo'], form_data.get('resolucion')
+                form_data['id_personal'], 
+                form_data['id_tipo_contrato'], 
+                form_data['fecha_inicio'], 
+                form_data.get('fecha_fin'),
+                form_data['sueldo'], 
+                form_data.get('resolucion'),
+                form_data['id_cargo'],
+                filename,           # nombre_archivo_real
+                file_bytes,         # archivo_binario (VARBINARY)
+                ahora_sistema       # fecha_registro_auditoria
             ))
 
-            # 🚀 3. GESTIÓN DEL RECORD LABORAL (dbo.record_laboral)
-            # Limpiamos aperturas previas con ceros o vacías para evitar duplicados "NONE"
-            cursor.execute("DELETE FROM dbo.record_laboral WHERE id_personal = ? AND descripcion LIKE 'Apertura%'", 
-                           (form_data['id_personal'],))
-
-            nro_res = form_data.get('resolucion', 'S/N')
-            desc_oficial = f"Apertura de Legajo - Resolución N° {nro_res}"
+            # 🚀 3. GESTIÓN DE USUARIO (Evita error 'Violation of UNIQUE KEY' del DNI)
+            # Primero recuperamos el DNI del personal para la verificación
+            cursor.execute("SELECT dni FROM dbo.personal WHERE id_personal = ?", (form_data['id_personal'],))
+            dni_row = cursor.fetchone()
             
-            query_record = """
-            INSERT INTO dbo.record_laboral (
-                id_personal, fecha_inicio, fecha_fin_vencimiento, 
-                descripcion, nombre_archivo, archivo_binario, 
-                fecha_registro, activo
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, 1)
-            """
-            cursor.execute(query_record, (
-                form_data['id_personal'],
-                form_data['fecha_inicio'],        # 📅 Fecha del contrato (ej: 2020)
-                form_data.get('fecha_fin'),       # 📅 Vencimiento inicial
-                desc_oficial,
-                filename,                         # 📄 Nombre del archivo PDF
-                file_bytes,                        # 📄 Binario del PDF (se guarda en SQL)
-                ahora_sistema                     # 🕒 Hora real para el historial
-            ))
+            if dni_row:
+                dni_trabajador = dni_row[0]
+                # Verificamos si ya existe una cuenta con ese DNI antes de insertar
+                cursor.execute("SELECT COUNT(*) FROM dbo.usuarios WHERE username = ?", (dni_trabajador,))
+                if cursor.fetchone()[0] == 0:
+                    # Si no existe el usuario, se crea la cuenta de acceso inicial
+                    query_usuario = """
+                        INSERT INTO dbo.usuarios (username, password_hash, id_rol, activo, id_personal)
+                        VALUES (?, ?, ?, 1, ?)
+                    """
+                    # 'hmpp2026' como contraseña temporal
+                    cursor.execute(query_usuario, (dni_trabajador, 'hmpp2026', 2, form_data['id_personal']))
 
-            conn.commit() # ✅ Si todo salió bien, guardamos los cambios de las 3 tablas
+            conn.commit() # ✅ Éxito: Todo guardado correctamente en contratos
             return True
 
         except Exception as e:
-            if 'conn' in locals(): conn.rollback() # ❌ Si algo falla, deshacemos todo para no ensuciar la DB
-            print(f"!!! Error crítico en contratación: {str(e)}")
+            if 'conn' in locals(): conn.rollback() # ❌ Si algo falla, se deshacen los cambios
+            print(f"!!! Error crítico en contratación HMPP: {str(e)}")
             raise e
         finally:
             conn.autocommit = True
@@ -889,7 +896,7 @@ class SqlServerPersonalRepository(IPersonalRepository):
                     SELECT TOP 1 sueldo 
                     FROM dbo.contratos 
                     WHERE id_personal = ? 
-                    ORDER BY fecha_inicio DESC
+                    ORDER BY id_contrato DESC
                 """, (persona['id_personal'],))
                 sueldo_row = cursor.fetchone()
                 persona['sueldo'] = sueldo_row[0] if sueldo_row else None
@@ -1043,7 +1050,23 @@ class SqlServerPersonalRepository(IPersonalRepository):
             # 5. Ejecución del Procedimiento Almacenado
             cursor.execute("{CALL sp_actualizar_personal(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)}", params)
             conn.commit()
+            # 3. Actualización Manual (Lógica Personal)
+            # Aquí tomamos la nueva llave 'email_personal' que definimos en la ruta
+            email_privado_nuevo = form_data.get('email_personal') 
+            telefono = form_data.get('telefono')
+            direccion = form_data.get('direccion')
+            estado_civil = form_data.get('estado_civil')
+            query_fix = """
+                UPDATE personal 
+                SET email_personal = ?,  -- Aquí se guarda el privado (ejemplo1@gmail.com)
+                    telefono = ?,
+                    direccion = ?,
+                    estado_civil = ?
+                WHERE id_personal = ?
+            """
+            cursor.execute(query_fix, (email_privado_nuevo, telefono, direccion, estado_civil, personal_id))
             
+            conn.commit()
             # --- CLAVE DEL ÉXITO: Devolver True para que la Ruta de Flask sepa que funcionó ---
             return True 
 
@@ -1053,6 +1076,8 @@ class SqlServerPersonalRepository(IPersonalRepository):
             # Este mensaje aparecerá en tu terminal de VS Code para depuración
             print(f"Error crítico al actualizar personal ID {personal_id}: {str(e)}")
             return False
+        finally:
+            cursor.close()
 
 
     # Llama a un SP para obtener todos los datos necesarios para el reporte general.
@@ -1618,32 +1643,39 @@ class SqlServerPersonalRepository(IPersonalRepository):
 
     def get_personal_para_escalafon(self, page, per_page, dni=None, nombres=None):
         """
-        Versión final 100% sincronizada con los nombres de columna de SSMS.
-        Resuelve el error 42S22 de 'Invalid column name'.
+        Versión final 100% sincronizada con el Trigger.
+        Lee el 'id_tipo_contrato' directamente de la tabla personal para mostrar
+        el estado actual real, ignorando fechas antiguas de contratos retroactivos.
         """
-        from app.database import get_db_read
+        from app.database.connector import get_db_read
         conn = get_db_read()
         cursor = conn.cursor()
         offset = (page - 1) * per_page
         
-        # 🚀 SQL SINCRONIZADO: Usamos los nombres reales de image_384f65.png
+        # 🚀 SQL CORREGIDO:
+        # 1. El SUELDO se sigue sacando del contrato con fecha más reciente (correcto para pagos).
+        # 2. El NOMBRE DEL CONTRATO se saca directo de 'personal' (correcto para estatus actual).
         query = """
             SELECT 
                 p.id_personal, p.dni, p.nombres, p.apellidos, p.activo,
                 c.nombre_cargo, 
-                u.nombre AS nombre_unidad,           -- 🛡️ 'nombre' es el real en SSMS
+                u.nombre AS nombre_unidad,
                 con.sueldo,
-                tc.nombre_tipo AS nombre_tipo_contrato, -- 🛡️ 'nombre_tipo' es el real en SSMS
+                tc.nombre_tipo AS nombre_tipo_contrato, -- <--- ESTO AHORA ES CORRECTO
                 COUNT(*) OVER() as total_count
             FROM dbo.personal p
             LEFT JOIN dbo.cargos c ON p.id_cargo = c.id_cargo
             LEFT JOIN dbo.unidad_administrativa u ON p.id_unidad = u.id_unidad 
+            
+            -- Mantenemos este JOIN solo para obtener el SUELDO más reciente por fecha
             LEFT JOIN dbo.contratos con ON con.id_contrato = (
-                SELECT TOP 1 id_contrato FROM dbo.contratos 
-                WHERE id_personal = p.id_personal 
-                ORDER BY fecha_inicio DESC
+                SELECT MAX(id_contrato) FROM dbo.contratos 
+                WHERE id_personal = p.id_personal
             )
-            LEFT JOIN dbo.tipos_contrato tc ON con.id_tipo_contrato = tc.id_tipo_contrato
+            
+            -- 🚀 EL CAMBIO CLAVE: Usamos p.id_tipo_contrato en lugar de con.id_tipo_contrato
+            -- Esto obedece al Trigger y muestra lo último que registraste, sin importar la fecha.
+            LEFT JOIN dbo.tipos_contrato tc ON p.id_tipo_contrato = tc.id_tipo_contrato
             WHERE 1=1
         """
         
@@ -1662,6 +1694,7 @@ class SqlServerPersonalRepository(IPersonalRepository):
             cursor.execute(query, params)
             columns = [column[0] for column in cursor.description]
             results = [dict(zip(columns, row)) for row in cursor.fetchall()]
+            # Manejo seguro en caso de que no haya resultados para evitar error de índice
             total = results[0]['total_count'] if results else 0
             return results, total
         except Exception as e:
@@ -1673,35 +1706,36 @@ class SqlServerPersonalRepository(IPersonalRepository):
         # app/infrastructure/persistence/sqlserver_repository.py
 
     def get_personal_by_id(self, id_personal):
+        """
+        Obtiene la información básica de un trabajador incluyendo el ID de contrato
+        para que los encabezados de RRHH funcionen correctamente.
+        """
+        conn = get_db_read()
+        cursor = conn.cursor()
+        try:
+            # ✅ CORRECCIÓN: Agregamos 'id_tipo_contrato' al SELECT
+            query = """
+                SELECT id_personal, nombres, apellidos, dni, activo, id_tipo_contrato 
+                FROM personal 
+                WHERE id_personal = ? 
             """
-            Obtiene la información básica de un trabajador para los encabezados de RRHH.
-            """
-            conn = get_db_read()
-            cursor = conn.cursor()
-            try:
-                # Seleccionamos nombres y DNI para el banner del Récord Laboral
-                query = """
-                    SELECT id_personal, nombres, apellidos, dni, activo 
-                    FROM personal 
-                    WHERE id_personal = ? 
-                """
-                cursor.execute(query, id_personal)
-                row = cursor.fetchone()
-                
-                # _row_to_dict convierte la fila de SQL en un objeto que Flask entiende
-                return _row_to_dict(cursor, row) if row else None
-            except Exception as e:
-                print(f"Error en get_personal_by_id: {e}")
-                return None
-            finally:
-                cursor.close()
+            cursor.execute(query, (id_personal,)) # Pasamos como tupla para evitar errores de tipo
+            row = cursor.fetchone()
+            
+            # _row_to_dict ahora sí encontrará el campo y lo enviará al HTML
+            return _row_to_dict(cursor, row) if row else None
+        except Exception as e:
+            print(f"🔥 Error crítico en get_personal_by_id: {e}")
+            return None
+        finally:
+            cursor.close()
 
     def add_record_laboral(self, data, file_bytes):
         """Guarda el récord capturando el tiempo exacto del sistema."""
+        from datetime import datetime # Nos aseguramos de que datetime esté disponible
         conn = get_db_write()
         cursor = conn.cursor()
         try:
-            # Ahora que importamos datetime, esto funcionará:
             ahora = datetime.now() 
             
             query = """
@@ -1713,18 +1747,20 @@ class SqlServerPersonalRepository(IPersonalRepository):
             params = (
                 data['id_personal'], ahora.year, ahora.month, ahora.day, ahora.strftime('%H:%M:%S'),
                 data['nombre_archivo'], file_bytes, data['descripcion'],
-                data['fecha_inicio'], data['fecha_fin']
+                data['fecha_inicio'], 
+                data['fecha_fin_vencimiento']  # 🔥 AQUÍ ESTABA EL ERROR (se llamaba diferente)
             )
             cursor.execute(query, params)
             conn.commit()
+            print("✅ Récord guardado exitosamente en BD.")
             return True
         except Exception as e:
-            # Este es el mensaje que viste en la terminal:
             print(f"!!! FALLO EN SQL SERVER: {e}") 
             conn.rollback()
             return False
         finally:
             cursor.close()
+            conn.close() # 🔥 MUY IMPORTANTE: Cierra la conexión para evitar errores en terminal
 
     def get_records_by_personal(self, id_personal):
         """
@@ -1907,6 +1943,31 @@ class SqlServerPersonalRepository(IPersonalRepository):
         
         # Si el conteo es mayor a 0, significa que el DNI ya lo tiene OTRA persona
         return resultado[0] > 0
+    
+
+    # AGREGAR AL FINAL DE LA CLASE SqlServerPersonalRepository
+
+    def get_contratos_directo(self, id_personal):
+        """
+        Consulta de emergencia directa a la tabla contratos para obtener fechas.
+        """
+        from app.database import get_db_read
+        conn = get_db_read()
+        cursor = conn.cursor()
+        try:
+            query = """
+                SELECT id_contrato, fecha_inicio, fecha_fin, sueldo
+                FROM contratos
+                WHERE id_personal = ?
+                ORDER BY fecha_inicio DESC
+            """
+            cursor.execute(query, id_personal)
+            return [_row_to_dict(cursor, row) for row in cursor.fetchall()]
+        except Exception as e:
+            print(f"Error en get_contratos_directo: {e}")
+            return []
+        finally:
+            cursor.close()
 
 
 

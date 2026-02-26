@@ -8,11 +8,10 @@
 </div>
 
 <div class="row g-4">
+    {# --- TARJETAS DE GESTIÓN DE LEGAJO --- #}
     <div class="col-md-6 col-lg-4">
         <a href="{{ url_for('legajo.crear_personal') }}" class="dashboard-card new-legajo">
-            <div class="card-icon">
-                <i class="bi bi-folder-plus"></i>
-            </div>
+            <div class="card-icon"><i class="bi bi-folder-plus"></i></div>
             <h4>Nuevo Legajo</h4>
             <p class="card-description">Registrar un nuevo empleado en el sistema.</p>
             <div class="ingresar-link">Ingresar ></div>
@@ -21,9 +20,7 @@
 
     <div class="col-md-6 col-lg-4">
         <a href="{{ url_for('legajo.listar_personal') }}" class="dashboard-card consult-legajo">
-            <div class="card-icon">
-                <i class="bi bi-search"></i>
-            </div>
+            <div class="card-icon"><i class="bi bi-search"></i></div>
             <h4>Consultar Legajo</h4>
             <p class="card-description">Buscar, ver y administrar legajos existentes.</p>
             <div class="ingresar-link">Ingresar ></div>
@@ -32,21 +29,16 @@
 
     <div class="col-md-6 col-lg-4">
         <a href="{{ url_for('admin_catalogo.listar_secciones') }}" class="dashboard-card settings">
-            <div class="card-icon">
-                <i class="bi bi-folder"></i>
-            </div>
+            <div class="card-icon"><i class="bi bi-folder"></i></div>
             <h4>Gestionar Secciones</h4>
             <p class="card-description">Crear y administrar secciones de legajo.</p>
             <div class="ingresar-link">Ingresar ></div>
         </a>
     </div>
 
-
     <div class="col-md-6 col-lg-4">
         <a href="{{ url_for('admin_catalogo.listar_tipos_documento') }}" class="dashboard-card reports">
-            <div class="card-icon">
-                <i class="bi bi-file-earmark-text"></i>
-            </div>
+            <div class="card-icon"><i class="bi bi-file-earmark-text"></i></div>
             <h4>Gestionar Tipos de Documento</h4>
             <p class="card-description">Administrar tipos de documento y sus secciones.</p>
             <div class="ingresar-link">Ingresar ></div>
@@ -55,14 +47,44 @@
 
     <div class="col-md-6 col-lg-4">
         <a href="{{ url_for('legajo.listar_personal_para_record') }}" class="dashboard-card payroll-records">
-            <div class="card-icon">
-                <i class="bi bi-cash-stack"></i>
-            </div>
+            <div class="card-icon"><i class="bi bi-cash-stack"></i></div>
             <h4>Consultar Récord Laboral</h4>
             <p class="card-description">Visualizar el historial de pagos y planillas.</p>
             <div class="ingresar-link">Ingresar ></div>
         </a>
     </div>
+    
+    <div class="col-md-6 col-lg-4">
+        <a href="{{ url_for('legajo.gestionar_solicitudes_arco') }}" class="dashboard-card arco-card">
+            <div class="card-icon"><i class="bi bi-shield-check"></i></div>
+            <h4>Solicitudes ARCO</h4>
+            <p class="card-description">Atender peticiones de Cancelación y Rectificación de datos.</p>
+            <div class="ingresar-link">Ingresar ></div>
+        </a>
+    </div>
 
-
-</div>{% endblock %}
+    {# --- NUEVO CARTEL: SEGURIDAD DE PLANILLAS (TOKEN) --- #}
+    {# Se eliminaron los estilos inline para que herede el diseño del CSS general #}
+    <div class="col-md-6 col-lg-4">
+        <a href="{{ url_for('legajo.gestionar_token') }}" class="dashboard-card security-token">
+            <div class="card-icon">
+                <i class="bi bi-shield-lock-fill"></i>
+            </div>
+            <h4>Seguridad de Planillas</h4>
+            <p class="card-description">Generar y administrar tokens de acceso para re-apertura de planillas.</p>
+            <div class="ingresar-link">Ingresar ></div>
+        </a>
+    </div>
+    {# --- NUEVA TARJETA: PAPELERA DE PLANILLAS --- #}
+    <div class="col-md-6 col-lg-4">
+        <a href="{{ url_for('legajo.papelera_planillas') }}" class="dashboard-card security-token">
+            <div class="card-icon">
+                <i class="bi bi-trash-fill"></i>
+            </div>
+            <h4>Papelera de Planillas</h4>
+            <p class="card-description">Restaurar procesos de planillas eliminados por el módulo de RRHH.</p>
+            <div class="ingresar-link">Ingresar ></div>
+        </a>
+    </div>
+</div>
+{% endblock %}

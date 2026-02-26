@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Ficha Personal</title>
+    <style>
+        /* NOTA: Si tu editor marca error en @page o @frame, IGNÓRALO.
+           Son comandos especiales para el motor de PDF (xhtml2pdf).
+        */
+        @page {
+            size: A4;
+            margin-top: 3.5cm;    /* Espacio reservado para el encabezado */
+            margin-bottom: 2cm;   /* Espacio reservado para el pie de página */
+            margin-left: 1.5cm;
+            margin-right: 1.5cm;
+
+            /* DEFINICIÓN DEL MARCO DE ENCABEZADO (Se repite en todas las páginas) */
+            @frame header_frame {
+                -pdf-frame-content: header_content; /* Busca el div con id='header_content' */
+                top: 1cm;
+                left: 1.5cm;
+                width: 18cm;
+                height: 2.5cm;
+            }
+
+            /* DEFINICIÓN DEL MARCO DE PIE DE PÁGINA */
+            @frame footer_frame {
+                -pdf-frame-content: footer_content; /* Busca el div con id='footer_content' */
+                bottom: 0cm;
+                left: 1.5cm;
+                width: 18cm;
+                height: 1cm;
+            }
+        }
+
+        body { font-family: Helvetica, Arial, sans-serif; font-size: 11px; color: #333; line-height: 1.4; }
+
+        /* ESTILOS DEL ENCABEZADO */
+        .header-table { width: 100%; border-bottom: 2px solid #1a4a7a; padding-bottom: 5px; }
+        .header-logo { width: 20%; text-align: left; vertical-align: middle; }
+        .header-text { width: 60%; text-align: center; vertical-align: middle; }
+        .header-logo-right { width: 20%; text-align: right; vertical-align: middle; }
+        
+        .header-title { font-size: 12px; font-weight: bold; text-transform: uppercase; margin: 0; color: #1a4a7a; }
+        .header-subtitle { font-size: 9px; margin: 2px 0; text-transform: uppercase; font-weight: bold; }
+        .header-meta { font-size: 8px; color: #555; margin-top: 2px; }
+
+        /* TÍTULOS DE SECCIÓN */
+        .section-title { 
+            background-color: #f0f0f0; 
+            color: #1a4a7a; 
+            padding: 5px 10px; 
+            font-weight: bold; 
+            font-size: 11px;
+            margin-top: 15px;
+            margin-bottom: 8px;
+            border-left: 4px solid #1a4a7a;
+        }
+
+        /* TABLAS DE DATOS */
+        .data-table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+        .data-table td { padding: 6px; border-bottom: 1px solid #ddd; vertical-align: top; }
+        .label { font-weight: bold; color: #555; width: 35%; background-color: #f9f9f9; }
+        .value { width: 65%; }
+
+        /* PIE DE PÁGINA */
+        .footer-text { text-align: center; font-size: 8px; color: #888; border-top: 1px solid #ccc; padding-top: 5px; }
+    </style>
+</head>
+<body>
+
+    <div id="header_content">
+        <table class="header-table">
+            <tr>
+                <td class="header-logo">
+                    {% if logo_path %}<img src="{{ logo_path }}" style="width: 50px; height: auto;">{% endif %}
+                </td>
+                <td class="header-text">
+                    <p class="header-title">HONORABLE MUNICIPALIDAD PROVINCIAL DE PASCO</p>
+                    <p class="header-subtitle">HMPP - SISTEMA DE ESCALAFÓN</p>
+                    <p class="header-meta">FICHA DE DATOS PERSONALES</p>
+                </td>
+                <td class="header-logo-right">
+                    {% if logo_path_right %}<img src="{{ logo_path_right }}" style="width: 90px; height: auto;">{% endif %}
+                </td>
+            </tr>
+        </table>
+        <div style="text-align: right; font-size: 8px; margin-top: 2px;">
+            
+            Fecha de Reporte: {{ fecha_hoy }}
+        </div>
+    </div>
+
+    <div id="footer_content">
+        <div class="footer-text">
+            Generado por el Sistema de Escalafón Digital - HMPP <br>
+            Página <pdf:pagenumber> de <pdf:pagecount>
+        </div>
+    </div>
+
+    <div class="section-title">I. IDENTIDAD Y FILIACIÓN</div>
+    <table class="data-table">
+        <tr><td class="label">Apellidos:</td><td class="value">{{ persona.apellidos }}</td></tr>
+        <tr><td class="label">Nombres:</td><td class="value">{{ persona.nombres }}</td></tr>
+        <tr><td class="label">DNI:</td><td class="value">{{ persona.dni }}</td></tr>
+        <tr>
+            <td class="label">Sexo:</td>
+            <td class="value">
+                {% if persona.sexo == 'M' %} Masculino
+                {% elif persona.sexo == 'F' %} Femenino
+                {% else %} {{ persona.sexo }} {% endif %}
+            </td>
+        </tr>
+        <tr><td class="label">Fecha Nacimiento:</td><td class="value">{{ persona.fecha_nacimiento }}</td></tr>
+        <tr><td class="label">Estado Civil:</td><td class="value">{{ persona.estado_civil }}</td></tr>
+    </table>
+
+    <div class="section-title">II. UBICACIÓN Y CONTACTO</div>
+    <table class="data-table">
+        <tr><td class="label">Dirección:</td><td class="value">{{ persona.direccion }}</td></tr>
+        <tr><td class="label">Teléfono:</td><td class="value">{{ persona.telefono }}</td></tr>
+        <tr><td class="label">Email Personal:</td><td class="value">{{ persona.email_personal or 'No registrado' }}</td></tr>
+        <tr>
+            <td class="label">Email Institucional:</td>
+            <td class="value">{{ persona.email or persona.email_corporativo or 'No asignado' }}</td>
+        </tr>
+    </table>
+
+    <div class="section-title">III. SITUACIÓN LABORAL ACTUAL</div>
+    <table class="data-table">
+        <tr>
+            <td class="label">Unidad Orgánica:</td>
+            <td class="value">{{ legajo.unidad | default('-') }}</td>
+        </tr>
+        <tr>
+            <td class="label">Cargo:</td>
+            <td class="value">{{ legajo.cargo | default('-') }}</td>
+        </tr>
+        <tr>
+            <td class="label">Régimen:</td>
+            <td class="value">{{ legajo.tipo_contrato | default('-') }}</td>
+        </tr>
+        <tr>
+            <td class="label">Fecha Ingreso:</td>
+            <td class="value">{{ legajo.fecha_institucional | default('-') }}</td>
+        </tr>
+        <tr>
+            <td class="label">Sueldo Básico:</td>
+            <td class="value">
+                {% if legajo.sueldo %}
+                    S/. {{ "%.2f"|format(legajo.sueldo|float) }}
+                {% else %}
+                    -
+                {% endif %}
+            </td>
+        </tr>
+    </table>
+
+</body>
+</html>

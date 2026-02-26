@@ -102,14 +102,37 @@
                 class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 {% if request.endpoint == 'legajo.buscar_documentos' %}active{% endif %}">
                 <i class="bi bi-search me-2"></i>Buscar Documentos
             </a>
+            <a href="{{ url_for('legajo.listar_personal_para_record') }}"
+               class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 {% if request.endpoint == 'legajo.listar_personal_para_record' %}active{% endif %}">
+               <i class="bi bi-cash-stack me-2"></i>Consultar Récord
+            </a>
             <a href="{{ url_for('legajo.gestionar_solicitudes') }}"
-                class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 d-flex justify-content-between align-items-center {% if 'solicitudes' in request.endpoint %}active{% endif %}">
+                class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 d-flex justify-content-between align-items-center {% if request.endpoint == 'legajo.gestionar_solicitudes' %}active{% endif %}">
                 <span><i class="bi bi-inbox-fill me-2"></i>Solicitudes</span>
-                {% set pending_count = solicitudes_pendientes_count() %}
-                {% if pending_count > 0 %}
-                <span class="badge bg-danger rounded-pill">{{ pending_count }}</span>
+                
+                {% if conteo_docs is defined and conteo_docs > 0 %}
+                <span class="badge bg-danger rounded-pill">{{ conteo_docs }}</span>
                 {% endif %}
             </a>
+
+            <a href="{{ url_for('legajo.gestionar_solicitudes_arco') }}"
+                class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 d-flex justify-content-between align-items-center {% if request.endpoint == 'legajo.gestionar_solicitudes_arco' %}active{% endif %}">
+                <span><i class="bi bi-shield-check me-2"></i>Modificación</span>
+                
+                {% if conteo_arco is defined and conteo_arco > 0 %}
+                <span class="badge bg-danger rounded-pill">{{ conteo_arco }}</span>
+                {% endif %}
+            </a>
+            <a href="{{ url_for('legajo.gestionar_token') }}"
+                    class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 {% if request.endpoint == 'legajo.gestionar_token' %}active{% endif %}">
+                    <i class="bi bi-shield-lock-fill me-2"></i>Seguridad de Planillas
+                </a>
+
+            {# NUEVO ENLACE: PAPELERA DE PLANILLAS #}
+                <a href="{{ url_for('legajo.papelera_planillas') }}"
+                    class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 {% if request.endpoint == 'legajo.papelera_planillas' %}active{% endif %}">
+                    <i class="bi bi-trash-fill me-2"></i>Papelera de Planillas
+                </a>
             {% endif %}
 
             {# --- Opciones para RRHH --- #}
@@ -128,6 +151,10 @@
                 class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 {% if request.endpoint == 'rrhh.exportar_empleados_excel' %}active{% endif %}">
                 <i class="bi bi-file-earmark-excel me-2"></i>Exportar a Excel
             </a>
+            <a href="{{ url_for('rrhh.gestionar_planillas') }}"
+            class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 {% if request.endpoint == 'rrhh.gestionar_planillas' %}active{% endif %}">
+                <i class="bi bi-cash-stack me-2"></i>Gestión de Planillas
+            </a>
             {% endif %}
 
             {# --- Opciones para Personal / Empleado --- #}
@@ -143,6 +170,10 @@
             <a href="{{ url_for('personal.actualizar_datos') }}"
                 class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 {% if request.endpoint == 'personal.actualizar_datos' %}active{% endif %}">
                 <i class="bi bi-pencil-square me-2"></i>Rectificar Datos
+            </a>
+            <a href="{{ url_for('personal.ver_mi_record') }}"
+                class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 {% if request.endpoint == 'personal.ver_mi_record' %}active{% endif %}">
+                <i class="bi bi-clock-history me-2"></i>Mi Récord Laboral
             </a>
             <!--
             <a href="{{ url_for('personal.solicitar_cambio_documento') }}" class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 {% if request.endpoint == 'personal.solicitar_cambio_documento' %}active{% endif %}">

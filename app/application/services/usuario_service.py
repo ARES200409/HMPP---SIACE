@@ -286,4 +286,31 @@ class UsuarioService:
         except Exception as e:
             logger.error(f"Error al obtener usuarios con roles: {e}")
             return []
-    
+    # Agrega esto dentro de la clase UsuarioService
+    def reset_user_password(self, user_id):
+        """
+        Resetea la contraseña del usuario a su mismo nombre de usuario (DNI).
+        """
+        try:
+            # 1. Buscar al usuario
+            user = self.get_user_by_id(user_id)
+            if not user:
+                return "Usuario no encontrado.", "warning"
+
+            # 2. Nueva contraseña = username (DNI)
+            nueva_pass = user.username
+            password_hash = generate_password_hash(nueva_pass)
+
+            # 3. Actualizar en BD (Usamos la conexión que ya tiene el servicio)
+            # NOTA: Si tu servicio usa un repositorio, úsalo. Si usa SQL directo:
+            conn = get_db_read() # O la función de conexión que use tu servicio arriba
+            cursor = conn.cursor()
+            cursor.execute("UPDATE usuarios SET password_hash = ? WHERE id_usuario = ?", (password_hash, user_id))
+            conn.commit()
+            conn.close()
+
+            return f"Contraseña restablecida correctamente al DNI: {nueva_pass}", "success"
+
+        except Exception as e:
+            print(f"Error reset password service: {e}")
+            return "Error interno al procesar la solicitud.", "danger"

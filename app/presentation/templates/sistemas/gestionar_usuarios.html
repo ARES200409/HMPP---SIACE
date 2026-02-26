@@ -9,10 +9,9 @@
 
 <style>
     .table-actions { min-width: 180px; white-space: nowrap; }
-    .badge-status { width: 85px; display: inline-block; text-align: center; }
+    /* Estilos para el estado visual */
+    .badge-status { width: 85px; display: inline-block; text-align: center; cursor: default; }
     .bg-time { background-color: #f8f9fa; border-radius: 4px; padding: 2px 5px; }
-    .btn-sync-hmpp { transition: transform 0.2s; }
-    .btn-sync-hmpp:hover { transform: scale(1.2); }
 </style>
 
 <div class="card shadow border-0">
@@ -46,7 +45,6 @@
                         <td>{{ user.nombre_completo or 'N/A' }}</td>
                         <td>
                             <span class="badge rounded-pill bg-light text-dark border">
-                                {# Traducción visual de rol para la municipalidad #}
                                 {% if user.rol_nombre == 'AdministradorLegajos' %}
                                     AdministradorEscalafon
                                 {% else %}
@@ -58,7 +56,6 @@
                             {% if user.last_login %}
                                 <div class="bg-time border d-inline-block">
                                     <i class="bi bi-clock-fill text-primary me-1"></i>
-                                    {# Mostramos fecha y hora real ajustada a UTC-5 en el backend #}
                                     {{ user.last_login.strftime('%d/%m/%Y %H:%M:%S') }}
                                 </div>
                             {% else %}
@@ -66,8 +63,7 @@
                             {% endif %}
                         </td>
                         <td>
-                            <div class="d-flex align-items-center gap-2">
-                                {# CORRECCIÓN: Usamos 'activo' para sincronizar con la BD y evitar el error visual #}
+                            <div class="d-flex align-items-center gap-2 justify-content-center">
                                 {% if user.activo %}
                                     <span class="badge bg-success badge-status">Activo</span>
                                 {% else %}
@@ -81,7 +77,8 @@
                                    class="btn btn-outline-warning btn-sm" title="Editar">
                                     <i class="bi bi-pencil-square"></i>
                                 </a>
-                                <button type="button" class="btn btn-outline-danger btn-sm btn-reset-hmpp" 
+                                <button type="button" 
+                                        class="btn btn-outline-danger btn-sm btn-reset-hmpp" 
                                         data-id="{{ user.id }}" 
                                         data-nombre="{{ user.username }}"
                                         title="Resetear Contraseña">
@@ -98,103 +95,12 @@
 </div>
 
 <input type="hidden" id="csrf_token_hmpp" value="{{ csrf_token() }}">
+<input type="hidden" id="url_reset_base" value="{{ url_for('sistemas.reset_password', user_id=0) }}">
+
 {% endblock %}
 
 {% block scripts %}
 {{ super() }}
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    const token = document.getElementById('csrf_token_hmpp').value;
-
-    // 1. Lógica de Sincronización Total (Sistemas + RRHH)
-    document.querySelectorAll('.btn-sync-hmpp').forEach(btn => {
-        btn.addEventListener('click', function() {
-            const id = this.dataset.id;
-            const estado = this.dataset.estado;
-            const nombre = this.dataset.nombre;
-            const esActivar = estado === "1";
-
-            Swal.fire({
-                title: `<span style="color: #3b699b">${esActivar ? '¿Activar Acceso?' : '¿Confirmar Bloqueo?'}</span>`,
-                text: `Esta acción sincronizará Sistemas y RRHH para: ${nombre}`,
-                icon: esActivar ? 'info' : 'warning',
-                showCancelButton: true,
-                confirmButtonColor: esActivar ? '#28a745' : '#d33',
-                cancelButtonColor: '#6c757d',
-                confirmButtonText: esActivar ? 'Sí, activar ambos' : 'Sí, desactivar ambos',
-                cancelButtonText: 'Cancelar',
-                reverseButtons: true
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    ejecutarSincronizacion(id, estado, token);
-                }
-            });
-        });
-    });
-
-    // 2. Lógica de Reseteo de Contraseña
-    document.querySelectorAll('.btn-reset-hmpp').forEach(btn => {
-        btn.addEventListener('click', function() {
-            const id = this.dataset.id;
-            const user = this.dataset.nombre;
-
-            Swal.fire({
-                title: '¿Restablecer Contraseña?',
-                text: `Se asignará la clave por defecto al usuario ${user}.`,
-                icon: 'question',
-                showCancelButton: true,
-                confirmButtonColor: '#3b699b',
-                confirmButtonText: 'Sí, resetear',
-                cancelButtonText: 'Cancelar'
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    const f = document.createElement('form');
-                    f.method = 'POST'; 
-                    f.action = `/sistemas/usuarios/reset_password/${id}`;
-                    const i = document.createElement('input');
-                    i.type = 'hidden'; i.name = 'csrf_token'; i.value = token;
-                    f.appendChild(i); 
-                    document.body.appendChild(f);
-                    f.submit();
-                }
-            });
-        });
-    });
-});
-
-// app/presentation/templates/sistemas/gestionar_usuarios.html
-
-function ejecutarSincronizacion(id, estado, token) {
-    // CORRECCIÓN: Agregamos el prefijo /sistemas/ a la ruta
-    fetch(`/sistemas/usuarios/cambiar_estado/${id}`, { 
-        method: 'POST',
-        headers: { 
-            'Content-Type': 'application/json', 
-            'X-CSRFToken': token 
-        },
-        body: JSON.stringify({ estado: parseInt(estado) })
-    })
-    .then(response => {
-        if (!response.ok) throw new Error('Error en la red');
-        return response.json();
-    })
-    .then(data => {
-        if (data.success) {
-            Swal.fire({ 
-                icon: 'success', 
-                title: 'Estado Actualizado', 
-                text: data.message, 
-                timer: 1500, 
-                showConfirmButton: false 
-            }).then(() => location.reload());
-        } else {
-            Swal.fire('Error', data.message, 'error');
-        }
-    })
-    .catch(error => {
-        Swal.fire('Error Crítico', 'No se pudo conectar con la ruta de sistemas.', 'error');
-    });
-}
-</script>
+<script src="{{ url_for('static', filename='js/gestion_usuarios.js') }}"></script>
 {% endblock %}

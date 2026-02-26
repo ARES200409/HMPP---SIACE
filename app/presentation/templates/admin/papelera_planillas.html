@@ -1,0 +1,126 @@
+{% extends "layouts/dashboard.html" %}
+
+{% block title %}Papelera de Planillas - HMPP{% endblock %}
+
+{% block dashboard_content %}
+<div class="container-fluid my-4">
+    {# Encabezado con botones de acción global similar a Documentos #}
+    <div class="row mb-4 align-items-center">
+        <div class="col-md-6">
+            <h1 class="h3 mb-1"><i class="bi bi-trash-fill text-secondary"></i> Papelera de Planillas</h1>
+            <p class="text-muted small">Recupera o elimina permanentemente procesos de planillas de la HMPP.</p>
+        </div>
+        <div class="col-md-6 text-end">
+            <div class="d-flex justify-content-end gap-2">
+                {% if planillas %}
+                <form method="POST" action="{{ url_for('legajo.vaciar_papelera_planillas') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <button type="submit" class="btn btn-danger btn-sm shadow-sm" onclick="return confirm('¿Está seguro de VACIAR TODA la papelera? Esta acción no se puede deshacer.')">
+                        <i class="bi bi-x-circle me-1"></i> Vaciar Papelera
+                    </button>
+                </form>
+                {% endif %}
+                
+            </div>
+        </div>
+    </div>
+
+    {# Mensajes Flash #}
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }} alert-dismissible fade show py-2 shadow-sm border-0 mb-4" role="alert">
+                    <small>{{ message }}</small>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    {% if planillas %}
+        <div class="card shadow-sm border-0">
+            {# Cabecera azul para uniformidad con la papelera de documentos #}
+            <div class="card-header py-3" style="background-color: #3b699b;"> 
+                <h6 class="mb-0 text-white">
+                    <i class="bi bi-list-task me-2"></i> {{ planillas|length }} Registro(s) en espera
+                </h6>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light small fw-bold text-uppercase">
+                            <tr>
+                                <th width="8%" class="ps-4">ID</th>
+                                <th width="18%">Periodo</th>
+                                <th width="22%">Tipo de Personal</th>
+                                <th width="15%">Monto Total</th>
+                                <th width="20%">Fecha Eliminación</th>
+                                <th width="17%" class="text-center">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody class="small">
+                            {% for p in planillas %}
+                                <tr>
+                                    <td class="ps-4 text-muted">#{{ p.id_planilla }}</td>
+                                    <td>
+                                        <div class="fw-bold">
+                                            {% set meses = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'] %}
+                                            {{ meses[p.mes] if p.mes is defined else 'S/N' }} {{ p.anio }}
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-light text-dark border w-100 py-2">
+                                            {{ p.tipo_planilla }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <div class="text-success fw-bold">S/. {{ "{:,.2f}".format(p.monto_total or 0) }}</div>
+                                    </td>
+                                    <td>
+                                        <div class="text-muted x-small">
+                                            <i class="bi bi-clock me-1"></i> {{ p.fecha_eliminacion|string|truncate(16, True, '') }}
+                                        </div>
+                                    </td>
+                                    <td class="text-center">
+                                        <div class="d-flex justify-content-center gap-2">
+                                            {# Botón Restaurar (Verde) #}
+                                            <form method="POST" action="{{ url_for('legajo.restaurar_planilla', id=p.id_planilla) }}">
+                                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                                <button type="submit" class="btn btn-success btn-sm p-1 px-2 shadow-sm" title="Restaurar Planilla" onclick="return confirm('¿Restaurar esta planilla?')">
+                                                    <i class="bi bi-arrow-counterclockwise"></i>
+                                                </button>
+                                            </form>
+                                            {# Botón Eliminar Permanente (Rojo) #}
+                                            <form method="POST" action="{{ url_for('legajo.eliminar_permanente_planilla', id=p.id_planilla) }}">
+                                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                                <button type="submit" class="btn btn-danger btn-sm p-1 px-2 shadow-sm" title="Eliminar Permanente" onclick="return confirm('¿Desea ELIMINAR PERMANENTEMENTE esta planilla? Los datos no se podrán recuperar.')">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </form>
+                                        </div>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    {% else %}
+        <div class="text-center py-5">
+            <div class="mb-3">
+                <i class="bi bi-folder-x text-muted opacity-25" style="font-size: 5rem;"></i>
+            </div>
+            <h5 class="text-muted fw-light">Papelera de planillas vacía</h5>
+        </div>
+    {% endif %}
+</div>
+
+<style>
+    .table thead th { border: none; font-size: 0.7rem; color: #6c757d; }
+    .table tbody td { border-bottom: 1px solid #f8f9fa; padding: 12px 8px; }
+    .x-small { font-size: 0.75rem; }
+    .badge { font-weight: 500; font-size: 0.7rem; letter-spacing: 0.5px; }
+    .btn-sm { border-radius: 6px; }
+</style>
+{% endblock %}

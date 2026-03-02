@@ -833,9 +833,16 @@ def generar_reporte_anual(id_personal, anio):
         """, (id_personal, anio))
         
         row_emp = cursor.fetchone()
+        # 🔥 VALIDACIÓN PARA EL JAVASCRIPT (No consume el Flash)
+        if request.args.get('check') == '1':
+            if not row_emp:
+                return jsonify({"status": "error"}), 404
+            return jsonify({"status": "ok"}), 200
+
+        # ❌ FLUJO NORMAL: SI NO HAY DATOS (Aquí sí usamos el Flash)
         if not row_emp:
             flash('No hay datos en planilla para este trabajador en el año seleccionado.', 'danger')
-            return redirect(url_for('rrhh.listar_personal'))
+            return redirect(request.referrer or url_for('rrhh.listar_personal'))
             
         dni_target = row_emp[3] 
         
@@ -1013,8 +1020,8 @@ def generar_reporte_anual(id_personal, anio):
         return send_file(io.BytesIO(pdf_bytes), mimetype='application/pdf', as_attachment=False, download_name=nombre_archivo)
 
     except Exception as e:
-        print(f"🔥 Error Crítico en Récord: {str(e)}")
+        print(f"🔥 Error Crítico en Récord: {str(e)}", 'danger')
         flash(f'Error técnico: {str(e)}', 'danger')
-        return redirect(url_for('rrhh.listar_personal'))
+        return redirect(request.referrer or url_for('rrhh.listar_personal'))
     finally:
         conn.close()

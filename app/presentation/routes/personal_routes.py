@@ -24,26 +24,33 @@ logger = logging.getLogger(__name__)
 
 @personal_bp.before_request
 def check_personal_role():
-    """Verifica que el usuario tenga rol 'Personal' para acceder a estas rutas."""
+    """Verifica que el usuario tenga permiso para acceder a sus rutas personales."""
     if current_user.is_authenticated:
-        # Se verifica de forma flexible (por nombre de rol o ID si fuera necesario)
+        # Obtenemos el nombre del rol del usuario
         rol_nombre = current_user.rol if hasattr(current_user, 'rol') else ''
         
-        if rol_nombre in ['Personal', 'Empleado']: # Aceptamos ambos por flexibilidad
-            return None
+        # 1. LISTA VIP: Todos estos roles son trabajadores y tienen derecho a ver su propio legajo
+        roles_permitidos = [
+            'Personal', 
+            'Empleado', 
+            'Sistemas', 
+            'RRHH', 
+            'AdministradorEscalafon', 
+            'AdministradorLegajos'
+        ]
+        
+        # Si el rol del usuario está en la lista permitida, lo dejamos pasar sin interrumpirlo
+        if rol_nombre in roles_permitidos:
+            return None  # En Flask, retornar None en un before_request significa "Todo bien, déjalo pasar a la ruta que pidió"
             
-        # Si no es Personal, redirigir según su rol
-        if rol_nombre == 'RRHH':
-            return redirect(url_for('rrhh.inicio'))
-        elif 'Admin' in rol_nombre: # Admin o SuperAdmin
-            return redirect(url_for('sistemas.dashboard'))
-            
-        # Si no tiene rol válido o no coincide
+        # 2. Si tiene un rol que no está en la lista, le bloqueamos el paso
         flash('No tienes permiso para acceder a la sección de Personal.', 'danger')
         return redirect(url_for('auth.login'))
 
-@personal_bp.route('/inicio', methods=['GET'])
+from app.core.security import role_required  # (La ruta exacta depende de cómo esté estructurado tu proyecto)
+@personal_bp.route('/inicio')
 @login_required
+@role_required('Personal', 'Sistemas', 'RRHH', 'AdministradorEscalafon', 'AdministradorLegajos') 
 def inicio():
     """
     Dashboard principal del empleado.

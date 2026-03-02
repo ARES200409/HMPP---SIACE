@@ -37,6 +37,9 @@
                     </thead>
                     <tbody>
                         {% for item in historial %}
+                        
+                        {# ✨ MAGIA: Si el item está activo, lo dibuja. Si está anulado (0), lo ignora por completo ✨ #}
+                        {% if item.activo %}
                         <tr>
                             <td>
                                 <div class="font-weight-bold text-dark mb-1">
@@ -66,11 +69,7 @@
                             </td>
 
                             <td class="text-center align-middle">
-                                {% if item.activo %}
-                                    <span class="badge bg-primary rounded-pill px-3">Registrado</span>
-                                {% else %}
-                                    <span class="badge bg-secondary rounded-pill px-3">Anulado</span>
-                                {% endif %}
+                                <span class="badge bg-primary rounded-pill px-3">Registrado</span>
                             </td>
 
                             <td class="text-center align-middle">
@@ -88,6 +87,8 @@
                                 {% endif %}
                             </td>
                         </tr>
+                        {% endif %}
+                        
                         {% endfor %}
                     </tbody>
                 </table>

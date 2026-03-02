@@ -7,6 +7,9 @@ from werkzeug.security import generate_password_hash as werkzeug_generate_hash
 from werkzeug.security import check_password_hash as werkzeug_check_hash
 from app.database.connector import get_db_write, get_db_read
 import logging
+from functools import wraps
+from flask import flash, redirect, url_for
+from flask_login import current_user
 
 logger = logging.getLogger(__name__)
 
@@ -331,3 +334,27 @@ class IDORProtection:
         except Exception as e:
             logger.error(f"Error en _check_rrhh_department: {str(e)}")
             return False 
+        
+def role_required(*roles):
+        """
+        Decorador para restringir el acceso a rutas según el rol del usuario.
+        Permite pasar múltiples roles permitidos.
+        Ejemplo: @role_required('Sistemas', 'Personal')
+        """
+        def decorator(f):
+            @wraps(f)
+            def decorated_function(*args, **kwargs):
+                # 1. Verificar si está logueado
+                if not current_user.is_authenticated:
+                    return redirect(url_for('auth.login'))
+                
+                # 2. Verificar si su rol está en la lista de permitidos
+                if current_user.rol not in roles:
+                    flash('No tienes permisos necesarios para acceder a esta página.', 'danger')
+                    # Si no tiene permiso, lo regresamos a una página segura (ej. index)
+                    return redirect(url_for('index'))
+                    
+                # 3. Si todo está bien, lo dejamos pasar
+                return f(*args, **kwargs)
+            return decorated_function
+        return decorator

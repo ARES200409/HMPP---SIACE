@@ -4,25 +4,38 @@
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin: 0; padding: 20px; color: #333; background-color: #f4f4f4; }
         .container { max-width: 600px; margin: auto; border: 1px solid #ddd; padding: 20px; background-color: #fff; border-radius: 8px; }
-        .header { background-color: #0D47A1; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
-        .code { font-size: 28px; font-weight: bold; text-align: center; margin: 25px 0; letter-spacing: 8px; color: #0D47A1; }
-        .footer { font-size: 12px; text-align: center; color: #777; margin-top: 20px; }
+        .header { background-color: #0D47A1; color: white; padding: 25px; text-align: center; border-radius: 8px 8px 0 0; }
+        
+        /* Ajuste para el logo circular o cuadrado de la muni */
+        .header img { max-height: 90px; width: auto; margin-bottom: 15px; border-radius: 50%; background: white; padding: 4px; }
+        .header h2 { margin: 0; font-size: 19px; font-weight: 500; letter-spacing: 0.5px; }
+        
+        .code { font-size: 34px; font-weight: bold; text-align: center; margin: 30px 0; letter-spacing: 12px; color: #0D47A1; background: #e3f2fd; padding: 20px; border-radius: 6px; border: 1px dashed #0D47A1; }
+        .footer { font-size: 11px; text-align: center; color: #777; margin-top: 25px; line-height: 1.6; }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h2>Legajo Digital - DIRESA Pasco</h2>
+            <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcT2KYzADB6wLHTOcierFTQMlUc2C-j0PqFgnA&s" alt="Logo HMPP">
+            <h2>Legajo Digital<br>Honorable Municipalidad Provincial de Pasco (HMPP)</h2>
         </div>
-        <div style="padding: 20px;">
-            <h4>Hola, {{ user_name }}</h4>
-            <p>Para completar tu inicio de sesión de forma segura, usa el siguiente código de verificación:</p>
+        
+        <div style="padding: 25px;">
+            <p style="font-size: 16px;">Hola, <strong>{{ user_name }}</strong></p>
+            <p>Para completar tu inicio de sesión de forma segura en el sistema, utiliza el siguiente código de verificación de 6 dígitos:</p>
+            
             <div class="code">{{ verification_code }}</div>
-            <p>Este código expirará en 10 minutos. Si no solicitaste este código, puedes ignorar este correo electrónico de forma segura.</p>
+            
+            <p style="font-size: 13px; color: #d32f2f; background: #fff1f0; padding: 10px; border-radius: 4px;">
+                <strong>Importante:</strong> Este código expira en 10 minutos. No compartas este código con nadie.
+            </p>
         </div>
+
         <div class="footer">
-            <p>Este es un correo electrónico automatizado. Por favor, no respondas.</p>
-            <p>&copy; 2025 DIRESA Pasco - Oficina de Sistemas</p>
+            <p>Este es un correo automático generado por la Oficina de Sistemas.<br>Por favor, no respondas a esta dirección.</p>
+            <hr style="border: 0; border-top: 1px solid #eee; margin: 15px 0;">
+            <p>&copy; 2026 Honorable Municipalidad Provincial de Pasco - Oficina de Sistemas -  Desarrollador: Jairo Santos Mandujano</p>
         </div>
     </div>
 </body>

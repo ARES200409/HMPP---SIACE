@@ -65,10 +65,19 @@ def login():
                 user_id, code_real = result  # <--- AQUÍ ESTÁ TU CÓDIGO DE 6 DÍGITOS
                 user_temp = usuario_service.get_user_by_id(user_id)
                 
-                # VALIDACIÓN DE ROL
+                # VALIDACIÓN DE ROL FLEXIBLE (Jerarquía)
+                roles_administrativos = ['Sistemas', 'RRHH', 'AdministradorLegajos']
+                
                 if user_temp and user_temp.rol != selected_role:
-                    flash(f'El usuario no pertenece al rol "{selected_role}".', 'warning')
-                    return redirect(url_for('auth.login'))
+                    # Si eligió 'Personal' y su rol real es de Administrador, lo dejamos pasar.
+                    if selected_role == 'Personal' and user_temp.rol in roles_administrativos:
+                        pass 
+                    else:
+                        flash(f'No tienes permisos para ingresar como "{selected_role}".', 'warning')
+                        return redirect(url_for('auth.login'))
+
+                # Guardamos en la sesión el rol que seleccionó para usarlo después del 2FA
+                session['login_role_selected'] = selected_role
 
                 # 📧 3. ENVÍO DE CORREO (USANDO EL CÓDIGO REAL)
                 email_service = current_app.config.get('EMAIL_SERVICE')
@@ -132,17 +141,22 @@ def verify_2fa():
             # ------------------------------------------------------------------
             # 🔑 CORRECCIÓN: Lógica de redirección basada en el rol
             # ------------------------------------------------------------------
-            if user.rol == 'Sistemas':
-                # Redirige al Dashboard de Sistemas (el de las 6 tarjetas)
+            rol_elegido = session.pop('login_role_selected', user.rol)
+
+            if rol_elegido == 'Sistemas' and user.rol == 'Sistemas':
                 return redirect(url_for('sistemas.dashboard'))
-            elif user.rol == 'RRHH':
+                
+            elif rol_elegido == 'RRHH' and user.rol == 'RRHH':
                 return redirect(url_for('rrhh.inicio_rrhh')) 
-            elif user.rol == 'AdministradorLegajos':
+                
+            elif rol_elegido == 'AdministradorLegajos' and user.rol == 'AdministradorLegajos':
                 return redirect(url_for('legajo.dashboard'))
-            elif user.rol == 'Personal':
+                
+            elif rol_elegido == 'Personal':
+                # Aquí entra Laura (AdminLegajos), Jairo (Sistemas) o cualquier Personal puro
                 return redirect(url_for('personal.inicio'))
+                
             else:
-                # Redirige a una página de índice general si el rol no coincide
                 return redirect(url_for('index'))
             # ------------------------------------------------------------------
             

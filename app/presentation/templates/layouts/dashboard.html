@@ -1,10 +1,11 @@
 {% extends 'layouts/base.html' %}
 
 {% block extra_css %}
-<!-- Cargamos el CSS de mejoras que tiene tus colores oscuros -->
 <link rel="stylesheet" href="{{ url_for('static', filename='css/mejoras_diseño.css') }}">
 {# FontAwesome para los iconos del nuevo diseño #}
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
 {% endblock %}
 
 {% block body_content %}
@@ -13,11 +14,9 @@
     {# CORRECCIÓN: Eliminé 'bg-white' y 'border-end'. Ahora usa el color de tu CSS (.prototipo-sidebar) #}
     <div class="prototipo-sidebar d-flex flex-column" style="min-width: 260px; width: 260px;">
 
-        <!-- SECCIÓN DE USUARIO -->
         {# CORRECCIÓN: Eliminé 'bg-light'. Ahora usa el color/degradado de tu CSS (.sidebar-user-info) #}
         <div class="sidebar-user-info text-center p-4 border-bottom">
             <div class="position-relative d-inline-block mb-3">
-                <!-- Foto de Perfil -->
                 <div class="profile-image-container rounded-circle overflow-hidden mx-auto"
                     style="width: 90px; height: 90px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
                     {% if current_user.foto_perfil %}
@@ -38,19 +37,19 @@
                 </div>
             </div>
 
-            <!-- Nombre y Rol -->
             <h6 class="user-name fw-bold mb-1">
                 {{ current_user.nombre_completo or current_user.username }}
             </h6>
             <div class="user-role badge bg-white text-primary bg-opacity-10 rounded-pill px-3 py-1 mb-2">
-                {% if current_user.rol == 'AdministradorLegajos' %}
+                {% if request.blueprint == 'personal' %}
+                    Personal
+                {% elif current_user.rol == 'AdministradorLegajos' %}
                     AdministradorEscalafon
                 {% else %}
                     {{ current_user.rol }}
                 {% endif %}
             </div>
 
-            <!-- Último Login -->
             {% if current_user.fecha_ultimo_login %}
             <div class="last-login small mt-2 d-flex align-items-center justify-content-center gap-1">
                 <i class="fa-regular fa-clock"></i>
@@ -64,20 +63,26 @@
                 Navegación
             </div>
 
+            {# 🌟 MAGIA APLICADA: Detectamos si estamos en el módulo 'personal' #}
+            {% set menu_rol = current_user.rol %}
+            {% if request.blueprint == 'personal' %}
+                {% set menu_rol = 'Personal' %}
+            {% endif %}
+
             {# LÓGICA DE URL DINÁMICA #}
             {% set HOME_URL = url_for('index') %}
             {% set active_test = 'index' %}
 
-            {% if current_user.rol == 'Sistemas' %}
+            {% if menu_rol == 'Sistemas' %}
             {% set HOME_URL = url_for('sistemas.dashboard') %}
             {% set active_test = 'sistemas.dashboard' %}
-            {% elif current_user.rol == 'RRHH' %}
+            {% elif menu_rol == 'RRHH' %}
             {% set HOME_URL = url_for('rrhh.inicio_rrhh') %}
             {% set active_test = 'rrhh.inicio_rrhh' %}
-            {% elif current_user.rol == 'AdministradorLegajos' %}
+            {% elif menu_rol == 'AdministradorLegajos' %}
             {% set HOME_URL = url_for('legajo.dashboard') %}
             {% set active_test = 'legajo.dashboard' %}
-            {% elif current_user.rol == 'Personal' or current_user.rol == 'Empleado' %}
+            {% elif menu_rol in ['Personal', 'Empleado'] %}
             {% set HOME_URL = url_for('personal.inicio') %}
             {% set active_test = 'personal.inicio' %}
             {% endif %}
@@ -89,7 +94,7 @@
             </a>
 
             {# --- Opciones para Legajos --- #}
-            {% if current_user.rol in ['AdministradorLegajos', 'Sistemas'] %}
+            {% if menu_rol in ['AdministradorLegajos', 'Sistemas'] %}
             <a href="{{ url_for('legajo.crear_personal') }}"
                 class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 {% if request.endpoint == 'legajo.crear_personal' %}active{% endif %}">
                 <i class="bi bi-folder-plus me-2"></i>Nuevo Legajo
@@ -136,8 +141,8 @@
             {% endif %}
 
             {# --- Opciones para RRHH --- #}
-            {% if current_user.rol in ['RRHH', 'Sistemas'] %}
-            {% if current_user.rol != 'Sistemas' %}
+            {% if menu_rol in ['RRHH', 'Sistemas'] %}
+            {% if menu_rol != 'Sistemas' %}
             <a href="{{ url_for('rrhh.listar_personal') }}"
                 class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 {% if request.endpoint in ['rrhh.listar_personal', 'rrhh.ver_legajo'] %}active{% endif %}">
                 <i class="bi bi-search me-2"></i>Consultar Legajos
@@ -158,7 +163,7 @@
             {% endif %}
 
             {# --- Opciones para Personal / Empleado --- #}
-            {% if current_user.rol == 'Personal' or current_user.rol == 'Empleado' %}
+            {% if menu_rol in ['Personal', 'Empleado'] %}
             <a href="{{ url_for('personal.ver_datos_personales') }}"
                 class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 {% if request.endpoint == 'personal.ver_datos_personales' %}active{% endif %}">
                 <i class="bi bi-person-badge me-2"></i>Mis Datos
@@ -175,21 +180,10 @@
                 class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 {% if request.endpoint == 'personal.ver_mi_record' %}active{% endif %}">
                 <i class="bi bi-clock-history me-2"></i>Mi Récord Laboral
             </a>
-            <!--
-            <a href="{{ url_for('personal.solicitar_cambio_documento') }}" class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 {% if request.endpoint == 'personal.solicitar_cambio_documento' %}active{% endif %}">
-                <i class="bi bi-file-earmark-diff me-2"></i>Cambio Documento
-            </a>
-            <a href="{{ url_for('personal.solicitar_cancelacion') }}" class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 {% if request.endpoint == 'personal.solicitar_cancelacion' %}active{% endif %}">
-                <i class="bi bi-trash me-2"></i>Solicitar Cancelación
-            </a>
-            <a href="{{ url_for('personal.derecho_oposicion') }}" class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 {% if request.endpoint == 'personal.derecho_oposicion' %}active{% endif %}">
-                <i class="bi bi-shield-slash me-2"></i>Derecho Oposición
-            </a>
-            -->
             {% endif %}
 
             {# --- Opciones para Sistemas --- #}
-            {% if current_user.rol == 'Sistemas' %}
+            {% if menu_rol == 'Sistemas' %}
             <a href="{{ url_for('sistemas.auditoria') }}"
                 class="list-group-item list-group-item-action border-0 rounded mb-1 px-3 {% if request.endpoint == 'sistemas.auditoria' %}active{% endif %}">
                 <i class="bi bi-journal-check me-2"></i>Auditoría
@@ -312,6 +306,7 @@
 
 
 <script src="{{ url_for('static', filename='js/dashboard.js') }}" nonce="{{ csp_nonce() }}"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11" nonce="{{ csp_nonce() }}"></script>
 
 {% block scripts %}{% endblock %}
 

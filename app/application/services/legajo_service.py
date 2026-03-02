@@ -491,13 +491,16 @@ class LegajoService:
         ws = wb.active
         ws.title = "Reporte General de Personal"
 
+        # ✅ 1. Cabeceras actualizadas con los dos nuevos campos
         headers = [
             "DNI", "Apellidos", "Nombres", "Sexo", "Fecha de Nacimiento", "Email",
             "Teléfono", "Unidad Administrativa", "Fecha de Ingreso", "Estado",
-            "Último Cargo", "Último Tipo de Contrato", "Modalidad", "Sueldo", "Resolución"
+            "Último Cargo", "Último Tipo de Contrato", "Modalidad", "Sueldo", "Resolución",
+            "Fecha Fin Contrato", "Sistema Pensionario" # <-- Nuevas columnas aquí
         ]
         ws.append(headers)
 
+        # Estilos de la cabecera (Fondo azul y letra blanca)
         header_font = Font(bold=True, color="FFFFFF")
         header_fill = PatternFill(start_color="0D47A1", end_color="0D47A1", fill_type="solid")
         for cell in ws[1]:
@@ -505,6 +508,7 @@ class LegajoService:
             cell.fill = header_fill
             cell.alignment = Alignment(horizontal="center", vertical="center")
 
+        # ✅ 2. Llenado de datos fila por fila
         for persona in personal_data:
             row_data = [
                 persona.get('dni'), persona.get('apellidos'), persona.get('nombres'),
@@ -512,14 +516,17 @@ class LegajoService:
                 persona.get('telefono'), persona.get('nombre_unidad'),
                 persona.get('fecha_ingreso'), 'Activo' if persona.get('activo') else 'Inactivo',
                 persona.get('cargo'), persona.get('tipo_contrato'), persona.get('modalidad'),
-                persona.get('sueldo'), persona.get('resolucion')
+                persona.get('sueldo'), persona.get('resolucion'),
+                persona.get('fecha_fin'), persona.get('sistema_pensionario') # <-- Extracción de los nuevos datos
             ]
             ws.append(row_data)
 
+        # Ajuste automático del ancho de las columnas para que se vea ordenado
         for column_cells in ws.columns:
             length = max(len(str(cell.value or "")) for cell in column_cells)
             ws.column_dimensions[get_column_letter(column_cells[0].column)].width = length + 2
 
+        # Guardado en memoria y envío del archivo
         excel_stream = io.BytesIO()
         wb.save(excel_stream)
         excel_stream.seek(0)

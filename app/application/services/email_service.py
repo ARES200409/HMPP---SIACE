@@ -14,7 +14,7 @@ class EmailService:
         try:
             # Crea un nuevo objeto Message con el asunto, remitente y destinatarios.
             msg = Message(
-                subject='Tu Código de Verificación - Legajo Digital DIRESA',
+                subject='Tu Código de Verificación - Honorable Municipalidad Provincial de Pasco (HMPP)',
                 sender=current_app.config['MAIL_DEFAULT_SENDER'],
                 recipients=[recipient_email]
             )
@@ -41,14 +41,14 @@ class EmailService:
         """
         try:
             msg = Message(
-                subject='Bienvenido al Sistema de Legajo Digital - DIRESA',
+                subject='Bienvenido al Sistema de la Honorable Municipalidad Provincial de Pasco - HMPP',
                 sender=current_app.config['MAIL_DEFAULT_SENDER'],
                 recipients=[recipient_email]
             )
             msg.html = render_template(
                 'email/welcome_user.html',
                 username=username,
-                system_name='Legajo Digital DIRESA'
+                system_name='Legajo Digital HMPP'
             )
             self.mail.send(msg)
             current_app.logger.info(f"Email de bienvenida enviado a {recipient_email}")

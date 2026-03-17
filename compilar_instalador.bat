@@ -1,18 +1,19 @@
 @echo off
 chcp 65001 >nul
-title Compilar Instalador - Sistema Legajo Digital DIRESA
+title Compilar Instalador - Sistema Digital HMPP
 
 echo.
 echo ============================================================
-echo     COMPILADOR DE INSTALADOR - LEGAJO DIGITAL DIRESA
+echo     COMPILADOR DE INSTALADOR - SISTEMA DIGITAL HMPP
 echo ============================================================
 echo.
-echo Este script compilará el instalador .exe usando Inno Setup
+echo Este script compilara el instalador .exe usando Inno Setup
 echo.
 
-REM Verificar si Inno Setup está instalado
+REM Buscar Inno Setup en TODAS las rutas posibles (incluyendo AppData)
 set INNO_PATH="C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
 set INNO_PATH_ALT="C:\Program Files\Inno Setup 6\ISCC.exe"
+set INNO_PATH_USER="%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe"
 
 if exist %INNO_PATH% (
     set COMPILER=%INNO_PATH%
@@ -24,19 +25,24 @@ if exist %INNO_PATH_ALT% (
     goto :compile
 )
 
+if exist %INNO_PATH_USER% (
+    set COMPILER=%INNO_PATH_USER%
+    goto :compile
+)
+
 echo.
-echo ERROR: Inno Setup no está instalado
+echo ERROR: Inno Setup no esta instalado o no se encuentra.
 echo.
 echo Por favor, descarga e instala Inno Setup desde:
 echo https://jrsoftware.org/isdl.php
 echo.
-echo Después de instalarlo, ejecuta este script nuevamente.
+echo Despues de instalarlo, ejecuta este script nuevamente.
 echo.
 pause
 exit /b 1
 
 :compile
-echo Inno Setup encontrado: %COMPILER%
+echo Inno Setup encontrado exitosamente en: %COMPILER%
 echo.
 echo Verificando archivos necesarios...
 
@@ -50,7 +56,7 @@ if not exist "setup.iss" (
 REM Verificar que existe LICENSE.txt
 if not exist "LICENSE.txt" (
     echo ADVERTENCIA: No se encuentra LICENSE.txt
-    echo Creando archivo de licencia básico...
+    echo Creando archivo de licencia basico...
     echo MIT License > LICENSE.txt
 )
 
@@ -61,7 +67,7 @@ if not exist "instalador" (
 
 echo.
 echo ============================================================
-echo Compilando instalador...
+echo Compilando instalador de HMPP...
 echo ============================================================
 echo.
 
@@ -96,8 +102,8 @@ if %errorlevel% equ 0 (
     echo ERROR AL COMPILAR EL INSTALADOR
     echo ============================================================
     echo.
-    echo Revisa los mensajes de error anteriores.
-    echo Verifica que todos los archivos necesarios estén presentes.
+    echo Revisa los mensajes de error anteriores en letras rojas.
+    echo Verifica que todos los archivos necesarios esten presentes.
     echo.
 )
 

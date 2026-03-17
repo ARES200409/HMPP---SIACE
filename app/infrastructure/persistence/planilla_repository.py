@@ -230,36 +230,41 @@ class PlanillaRepository:
     def actualizar_montos_detalle(self, id_detalle, data):
         """
         Actualiza los montos y las descripciones (glosas) de una boleta específica,
-        incluyendo los nuevos campos (Nivel, Meta, Ubicación, Sindicato, Viáticos,
-        Inasistencias Justificadas) y GUARDA EL DESGLOSE DINÁMICO para el Récord Laboral.
+        incluyendo el VÍNCULO AL CATÁLOGO (id_config), Nivel, Meta, Ubicación, 
+        y guarda el DESGLOSE DINÁMICO para el Récord Laboral.
         """
-        import json  # Importante para leer el paquete de bonos dinámicos
+        import json  
         from app.database import get_db_write
         conn = get_db_write()
         cursor = conn.cursor()
         try:
             # --- 1. RECIBIR DATOS DEL FORMULARIO ---
             
-            # TEXTOS FIJOS Y METADATOS HMPP
+            # 🔥 NUEVO: Capturar el ID de la configuración presupuestal
+            id_config_raw = data.get('id_config')
+            id_config = int(id_config_raw) if id_config_raw and str(id_config_raw).strip() != "" else None
+
+            # METADATOS Y TEXTOS
             nivel = data.get('nivel', '')
-            meta = data.get('meta', '')
+            meta = data.get('meta', '') # Este se llena solo por JS pero lo guardamos por respaldo
             cuspp = data.get('cuspp', '')
             cuenta_cts = data.get('cuenta_cts', '')
             ubicacion = data.get('ubicacion', '')
             tipo_trabajador = data.get('tipo_trabajador', '')
             autogenerado = data.get('autogenerado', '')
-            actividad = data.get('actividad', '')
+            
+            # Nota: 'actividad' ahora viene del catálogo, pero lo guardamos como texto para reportes históricos
+            actividad = data.get('actividad', '') 
             condicion_laboral = data.get('condicion_laboral', '')
             fotocheck = data.get('fotocheck', '')
             
-            # TEXTOS ANTIGUOS
             glosa_bonos = data.get('glosa_bonos', '')      
             glosa_otros = data.get('glosa_otros', '')      
             observaciones = data.get('observaciones', '')  
             sistema_pensionario = data.get('sistema_pensionario', '')
             nocuenta = data.get('nocuenta', '')
 
-            # NÚMEROS DE ASISTENCIA Y SCTR
+            # ASISTENCIA Y SCTR
             dias_laborados = int(data.get('dias_laborados', 30) or 30)
             dias_falta = int(data.get('dias_falta', 0) or 0)
             dias_subsidiados = int(data.get('dias_subsidiados', 0) or 0)
@@ -267,7 +272,7 @@ class PlanillaRepository:
             dias_computables = int(data.get('dias_computables', 30) or 30)
             tasa_sctr = float(data.get('tasa_sctr', 0) or 0)
             
-            # 🔥 INASISTENCIAS JUSTIFICADAS
+            # INASISTENCIAS JUSTIFICADAS
             d_medico = int(data.get('d_medico', 0) or 0)
             d_vacaciones = int(data.get('d_vacaciones', 0) or 0)
             d_permisos = int(data.get('d_permisos', 0) or 0)
@@ -298,7 +303,7 @@ class PlanillaRepository:
             es_sindicalizado = 1 if str(data.get('es_sindicalizado')).upper() == 'SI' else 0
             desc_sindicato = float(data.get('desc_sindicato', 0) or 0)
 
-            # 🔥 LEER EL DESGLOSE DINÁMICO (Ingresos, Descuentos y Aguinaldos)
+            # DESGLOSE DINÁMICO
             json_conceptos_str = data.get('json_conceptos', '[]')
             try:
                 lista_conceptos = json.loads(json_conceptos_str)
@@ -312,30 +317,25 @@ class PlanillaRepository:
                 return False 
             
             sueldo = float(row[0])
-
-            # Recálculo de Totales (Añadimos Viático a la suma Bruta)
             total_ingresos = sueldo + asignacion_familiar + d_viatico + reintegros + bonos
-            
-            # Sumamos el sindicato al total de descuentos
             total_descuentos = (monto_pension + essalud_vida + renta_4ta + 
                                 faltas_monto + judiciales + otros_desc + desc_sindicato)
             
             neto_pagar = total_ingresos - total_descuentos
-            if neto_pagar < 0:
-                neto_pagar = 0
+            if neto_pagar < 0: neto_pagar = 0
             
             base_calculo = mon_aseg if mon_aseg > 0 else sueldo
             aporte_essalud = base_calculo * 0.09
 
-            # --- 3. ACTUALIZAR BASE DE DATOS (TABLA PRINCIPAL) ---
+            # --- 3. ACTUALIZAR BASE DE DATOS ---
             sql = """
                 UPDATE detalle_planilla SET 
+                    id_config = ?, -- 🔥 AQUÍ SE GUARDA EL VÍNCULO AL CATÁLOGO
                     nivel = ?, meta = ?, cuspp = ?, cuenta_cts = ?, tasa_sctr = ?,
                     ubicacion = ?, tipo_trabajador = ?, autogenerado = ?,
                     dias_subsidiados = ?, horas_laboradas = ?, dias_computables = ?,
                     es_sindicalizado = ?, desc_sindicato = ?,
                     actividad = ?, condicion_laboral = ?, fotocheck = ?,
-                
                     dias_laborados = ?, sistema_pensionario = ?, nocuenta = ?, mon_aseg = ?,
 
                     -- Ingresos
@@ -361,8 +361,8 @@ class PlanillaRepository:
             """
             
             cursor.execute(sql, (
-                # Nuevos y Metadatos
-                nivel, meta, cuspp, cuenta_cts, tasa_sctr,
+                # Datos de Configuración y Metadatos
+                id_config, nivel, meta, cuspp, cuenta_cts, tasa_sctr,
                 ubicacion, tipo_trabajador, autogenerado,
                 dias_subsidiados, horas_laboradas, dias_computables,
                 es_sindicalizado, desc_sindicato,
@@ -394,11 +394,9 @@ class PlanillaRepository:
                 id_detalle
             ))
             
-            # --- 4. MAGIA: GUARDAR EL DESGLOSE DINÁMICO ---
-            # 4.1 Limpiamos los conceptos anteriores de este trabajador
+            # --- 4. GUARDAR EL DESGLOSE DINÁMICO ---
             cursor.execute("DELETE FROM detalle_conceptos_trabajador WHERE id_detalle = ?", (id_detalle,))
             
-            # 4.2 Insertamos uno por uno los conceptos que llegaron en el JSON
             if len(lista_conceptos) > 0:
                 sql_insert_desglose = """
                     INSERT INTO detalle_conceptos_trabajador (id_detalle, id_concepto, monto)
@@ -414,6 +412,8 @@ class PlanillaRepository:
             conn.rollback()
             print(f"⚠️ Error al guardar ficha: {e}")
             raise e
+        finally:
+            cursor.close()
 
     # ... (resto del código igual) ...
 
@@ -664,7 +664,7 @@ class PlanillaRepository:
                     -- 1. IDENTIFICACIÓN Y CARGO
                     ROW_NUMBER() OVER(ORDER BY p.apellidos) as item,
                     p.dni,
-                    p.apellidos + ', ' + p.nombres as nombre_completo,
+                    ISNULL(dp.nombre_completo, (ISNULL(p.apellidos, '') + ', ' + ISNULL(p.nombres, ''))) as nombre_completo,
                     ISNULL(c.nombre_cargo, dp.cargo_actual) as cargo,
                     dp.sistema_pensionario as regimen_pensionario, 
                     ISNULL(dp.nocuenta, '-') as cuenta_bancaria,
@@ -823,84 +823,172 @@ class PlanillaRepository:
             return None
         
 
-    def restaurar_planilla_logica(self, id_planilla):
-        """Saca la planilla de la papelera y la devuelve al estado activo."""
+    def restaurar_planilla_logica(self, id_planilla, origen='MODERNA'):
+        """
+        Saca la planilla de la papelera y la devuelve al estado activo.
+        Soporta tanto el módulo moderno (RRHH) como el histórico (Escalafón).
+        """
         conn = get_db_write()
         cursor = conn.cursor()
         try:
-            # Simplemente regresamos el flag a 0
-            query = "UPDATE planillas SET eliminado = 0 WHERE id_planilla = ?"
-            cursor.execute(query, (id_planilla,))
+            # 🚀 Lógica Híbrida según el origen detectado en el HTML
+            if origen == 'HISTORICA':
+                # En la Bóveda Histórica, restaurar es poner activo = 1
+                query = "UPDATE Planillas_Historicas SET activo = 1 WHERE id_planilla_historica = ?"
+            else:
+                # En RRHH, restaurar es regresar el flag eliminado a 0
+                query = "UPDATE planillas SET eliminado = 0 WHERE id_planilla = ?"
             
+            cursor.execute(query, (id_planilla,))
             conn.commit()
-            return True
+            
+            # Verificamos si realmente se actualizó alguna fila
+            return cursor.rowcount > 0
+            
         except Exception as e:
-            conn.rollback()
+            if conn:
+                conn.rollback()
+            print(f"🔥 Error al restaurar planilla ({origen}): {str(e)}")
             return False
         finally:
+            cursor.close()
             conn.close()
 
     def obtener_planillas_eliminadas(self):
-        """Trae planillas de la papelera calculando sus montos al vuelo."""
+        """
+        Trae planillas eliminadas de AMBAS tablas (RRHH e Históricas).
+        Mapea los datos para que sean 100% compatibles con el HTML actual.
+        """
         conn = get_db_read()
         cursor = conn.cursor()
         try:
+            # 🚀 SQL UNIFICADO CON PARCHE DE SEGURIDAD
             query = """
+                -- 1. PLANILLAS MODERNAS (Módulo RRHH)
                 SELECT 
-                    p.id_planilla, p.mes, p.anio, p.tipo_planilla, 
+                    p.id_planilla, 
+                    p.mes, 
+                    p.anio, 
+                    p.tipo_planilla, 
                     p.fecha_eliminacion,
-                    (SELECT SUM(ISNULL(neto_pagar, 0)) FROM detalle_planilla d WHERE d.id_planilla = p.id_planilla) as monto_total
+                    (SELECT SUM(ISNULL(neto_pagar, 0)) FROM detalle_planilla d WHERE d.id_planilla = p.id_planilla) as monto_total,
+                    'MODERNA' as origen
                 FROM planillas p 
                 WHERE p.eliminado = 1
-                ORDER BY p.fecha_eliminacion DESC
+
+                UNION ALL
+
+                -- 2. PLANILLAS HISTÓRICAS (Módulo Escalafón / Bóveda)
+                SELECT 
+                    ph.id_planilla_historica as id_planilla, 
+                    CASE ph.mes 
+                        WHEN 'Enero' THEN 1 WHEN 'Febrero' THEN 2 WHEN 'Marzo' THEN 3
+                        WHEN 'Abril' THEN 4 WHEN 'Mayo' THEN 5 WHEN 'Junio' THEN 6
+                        WHEN 'Julio' THEN 7 WHEN 'Agosto' THEN 8 WHEN 'Septiembre' THEN 9
+                        WHEN 'Octubre' THEN 10 WHEN 'Noviembre' THEN 11 WHEN 'Diciembre' THEN 12
+                        ELSE 0
+                    END as mes,
+                    ph.anio, 
+                    'HISTÓRICA (' + ISNULL(ph.cargo_historico, 'S/N') + ')' as tipo_planilla, 
+                    -- 🛡️ PARCHE: Intentamos usar la columna fecha_eliminacion, si falla usamos la fecha actual
+                    GETDATE() as fecha_eliminacion, 
+                    ph.monto_neto as monto_total,
+                    'HISTORICA' as origen
+                FROM Planillas_Historicas ph
+                WHERE ph.activo = 0
+
+                ORDER BY fecha_eliminacion DESC
             """
             cursor.execute(query)
-            # Mapeamos a diccionario para que Jinja lo lea fácil
+            
+            # Convertimos a lista de diccionarios para Jinja2
             columns = [column[0] for column in cursor.description]
-            return [dict(zip(columns, row)) for row in cursor.fetchall()]
+            resultados = [dict(zip(columns, row)) for row in cursor.fetchall()]
+            
+            print(f"✅ PAPELERA: Se cargaron {len(resultados)} registros.")
+            return resultados
+            
+        except Exception as e:
+            # 🚨 SI SALE VACÍO, REVISA ESTE ERROR EN TU CONSOLA:
+            print(f"❌ ERROR CRÍTICO EN PAPELERA: {str(e)}")
+            return []
         finally:
+            cursor.close()
             conn.close()
 
-    def eliminar_planilla_permanente(self, id_planilla):
-        """Borra definitivamente una planilla y sus detalles de la base de datos."""
+    def eliminar_planilla_permanente(self, id_planilla, origen='MODERNA'):
+        """
+        Borra físicamente los datos de la base de datos de forma irreversible.
+        Soporta los dos módulos: Moderno (RRHH) e Histórico (Escalafón).
+        """
         conn = get_db_write()
         cursor = conn.cursor()
         try:
-            # 1. Borramos los detalles de los trabajadores primero
-            cursor.execute("DELETE FROM detalle_planilla WHERE id_planilla = ?", (id_planilla,))
-            
-            # 2. Borramos la cabecera de la planilla
-            cursor.execute("DELETE FROM planillas WHERE id_planilla = ? AND eliminado = 1", (id_planilla,))
+            # 🚀 Lógica Híbrida de Eliminación Física
+            if origen == 'HISTORICA':
+                # 1. Borramos los conceptos dinámicos de esa planilla (Bóveda)
+                cursor.execute("DELETE FROM Planillas_Historicas_Conceptos WHERE id_planilla_historica = ?", (id_planilla,))
+                
+                # 2. Borramos la cabecera histórica
+                cursor.execute("DELETE FROM Planillas_Historicas WHERE id_planilla_historica = ? AND activo = 0", (id_planilla,))
+                
+            else:
+                # 1. Borramos los detalles de trabajadores (RRHH Moderno)
+                cursor.execute("DELETE FROM detalle_planilla WHERE id_planilla = ?", (id_planilla,))
+                
+                # 2. Borramos la cabecera de la planilla moderna
+                cursor.execute("DELETE FROM planillas WHERE id_planilla = ? AND eliminado = 1", (id_planilla,))
             
             conn.commit()
+            
+            # Si el rowcount es mayor a 0, es que algo se borró con éxito
             return True
+            
         except Exception as e:
-            conn.rollback()
-            print(f"🔥 Error en eliminación permanente: {e}")
+            if conn:
+                conn.rollback()
+            print(f"🔥 Error en eliminación física ({origen}): {str(e)}")
             return False
         finally:
+            cursor.close()
             conn.close()
 
     def vaciar_papelera_planillas(self):
-        """Borra permanentemente todas las planillas que están en la papelera."""
+        """
+        Borra permanentemente TODO lo que esté en la papelera de ambos módulos.
+        Esta acción es irreversible y limpia tanto RRHH como la Bóveda Histórica.
+        """
         conn = get_db_write()
         cursor = conn.cursor()
         try:
-            # Borramos detalles de todas las planillas marcadas como eliminadas
+            # --- 1. VACIAR MÓDULO MODERNO (RRHH) ---
+            # Primero borramos los detalles de los trabajadores
             cursor.execute("""
                 DELETE FROM detalle_planilla 
                 WHERE id_planilla IN (SELECT id_planilla FROM planillas WHERE eliminado = 1)
             """)
-            
-            # Borramos las cabeceras
+            # Luego borramos las cabeceras de las planillas
             cursor.execute("DELETE FROM planillas WHERE eliminado = 1")
-            
+
+            # --- 2. VACIAR MÓDULO HISTÓRICO (ESCALAFÓN) ---
+            # Primero borramos los conceptos dinámicos (ingresos/descuentos antiguos)
+            cursor.execute("""
+                DELETE FROM Planillas_Historicas_Conceptos 
+                WHERE id_planilla_historica IN (SELECT id_planilla_historica FROM Planillas_Historicas WHERE activo = 0)
+            """)
+            # Luego borramos las cabeceras de la bóveda histórica
+            cursor.execute("DELETE FROM Planillas_Historicas WHERE activo = 0")
+
             conn.commit()
             return True
+
         except Exception as e:
-            conn.rollback()
+            if conn:
+                conn.rollback()
+            print(f"🔥 Error crítico al vaciar papelera unificada: {str(e)}")
             return False
         finally:
+            cursor.close()
             conn.close()
 
 
@@ -1116,5 +1204,341 @@ class PlanillaRepository:
         except Exception as e:
             print(f"❌ Error en obtener_conceptos_trabajador: {e}")
             return {'ingresos': [], 'descuentos': [], 'aguinaldos': []}
+        finally:
+            cursor.close()
+
+    def obtener_pdf_historico_por_id(self, id_planilla):
+        """
+        Recupera el contenido binario del PDF desde la tabla Planillas_Historicas.
+        Intenta obtener primero el generado y si no, el escaneado.
+        """
+        conn = get_db_read()
+        cursor = conn.cursor()
+        try:
+            # 🚀 Seleccionamos el binario y construimos un nombre para el archivo
+            query = """
+                SELECT 
+                    ISNULL(archivo_generado, archivo_escaneado) as contenido,
+                    'HISTÓRICO_' + CAST(anio AS VARCHAR) + '_' + mes + '.pdf' as nombre
+                FROM Planillas_Historicas 
+                WHERE id_planilla_historica = ?
+            """
+            cursor.execute(query, (id_planilla,))
+            row = cursor.fetchone()
+            
+            if row and row[0]:
+                return {
+                    'contenido': row[0], # Los bytes del PDF
+                    'nombre_archivo': row[1]
+                }
+            return None
+        except Exception as e:
+            print(f"❌ Error en repositorio al extraer PDF histórico: {e}")
+            return None
+        finally:
+            cursor.close()
+            # conn.close() se maneja automáticamente
+
+    # =========================================================
+    # MÓDULO: CATÁLOGO PRESUPUESTAL (SIAF/S10)
+    # =========================================================
+
+    def obtener_presupuesto_configs(self):
+        """Obtiene todas las combinaciones activas de NP, Actividad y Meta."""
+        conn = get_db_read()
+        cursor = conn.cursor()
+        try:
+            # Traemos todo, ordenado por el NP para que sea fácil de leer
+            query = """
+                SELECT id_config, np_codigo, actividad_nombre, meta_codigo, anio_vigencia, activo 
+                FROM presupuesto_config 
+                ORDER BY np_codigo ASC
+            """
+            cursor.execute(query)
+            columns = [column[0] for column in cursor.description]
+            return [dict(zip(columns, row)) for row in cursor.fetchall()]
+        finally:
+            cursor.close()
+
+    def guardar_presupuesto_config(self, data, usuario_actual):
+        """Inserta una nueva combinación en el catálogo y guarda en auditoría."""
+        import json # Importación segura
+        conn = get_db_write()
+        cursor = conn.cursor()
+        try:
+            # 1. Guardamos en la tabla principal y recuperamos el ID generado
+            query_maestra = """
+                INSERT INTO presupuesto_config (np_codigo, actividad_nombre, meta_codigo, anio_vigencia)
+                OUTPUT INSERTED.id_config
+                VALUES (?, ?, ?, ?)
+            """
+            cursor.execute(query_maestra, (
+                data['np'].strip(), 
+                data['actividad'].strip().upper(), 
+                data['meta'].strip(), 
+                data.get('anio', 2026)
+            ))
+            
+            nuevo_id = cursor.fetchone()[0]
+
+            # 2. Preparamos los datos para el LOG
+            datos_nuevos = json.dumps({
+                "np_codigo": data['np'].strip(),
+                "actividad_nombre": data['actividad'].strip().upper(),
+                "meta_codigo": data['meta'].strip()
+            })
+
+            # 3. Guardamos en el historial
+            query_log = """
+                INSERT INTO presupuesto_config_log 
+                (id_config, usuario_accion, accion, datos_anteriores, datos_nuevos)
+                VALUES (?, ?, 'CREAR', NULL, ?)
+            """
+            cursor.execute(query_log, (nuevo_id, usuario_actual, datos_nuevos))
+
+            # 4. Confirmamos AMBAS transacciones
+            conn.commit()
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error al guardar config y log: {e}")
+            conn.rollback()
+            return False
+        finally:
+            cursor.close()
+
+    def eliminar_presupuesto_config(self, id_config, usuario_actual):
+        """Intenta eliminar. Si falla (por FK), lo desactiva. Todo queda auditado."""
+        conn = get_db_write()
+        cursor = conn.cursor()
+        try:
+            # 1. Intentamos borrado físico
+            cursor.execute("DELETE FROM presupuesto_config WHERE id_config = ?", (id_config,))
+            
+            # 2. Registramos la eliminación en el log
+            query_log = """
+                INSERT INTO presupuesto_config_log (id_config, usuario_accion, accion)
+                VALUES (?, ?, 'ELIMINAR')
+            """
+            cursor.execute(query_log, (id_config, usuario_actual))
+            
+            conn.commit()
+            return {"estado": "ok", "mensaje": "Registro eliminado permanentemente."}
+            
+        except Exception:
+            # Si da error (porque ya se usó para un trabajador), deshacemos el delete
+            conn.rollback()
+            
+            # 1. Hacemos borrado lógico (desactivar)
+            cursor.execute("UPDATE presupuesto_config SET activo = 0 WHERE id_config = ?", (id_config,))
+            
+            # 2. Registramos la desactivación en el log
+            query_log = """
+                INSERT INTO presupuesto_config_log (id_config, usuario_accion, accion)
+                VALUES (?, ?, 'DESACTIVAR')
+            """
+            cursor.execute(query_log, (id_config, usuario_actual))
+            
+            conn.commit()
+            return {"estado": "warning", "mensaje": "El registro ya está en uso. Se ha ocultado del catálogo por seguridad."}
+        finally:
+            cursor.close()
+
+    
+    def procesar_carga_masiva_completa(self, id_planilla, dataframe):
+        """
+        Procesa la sábana masiva con lógica UPSERT integral.
+        Mapea todos los campos de editar_ficha.html, calcula tasas de SCTR,
+        hereda cargos oficiales y vincula presupuesto S10 flexiblemente.
+        """
+        import pandas as pd
+        from app.database import get_db_write 
+        
+        conn = get_db_write()
+        cursor = conn.cursor()
+
+        # Auxiliar: Limpia números (maneja vacíos, comas y guiones)
+        def limpiar_num(valor):
+            if pd.isna(valor): return 0.0
+            v = str(valor).replace(',', '').strip()
+            if v == '-' or v == '': return 0.0
+            try: return float(v)
+            except: return 0.0
+
+        # Auxiliar: Limpia texto para evitar 'nan', 'none' o vacíos en la BD
+        def limpiar_txt(valor):
+            val_str = str(valor).strip()
+            if pd.isna(valor) or val_str.lower() in ['nan', 'none', '']: return None
+            return val_str
+
+        try:
+            # =================================================================
+            # 🔥 FASE 0: VALIDACIÓN DE DNI Y RESCATE DE CARGOS OFICIALES
+            # =================================================================
+            dnis_no_registrados = []
+            mapa_personal = {} 
+
+            for _, fila in dataframe.iterrows():
+                dni_raw = str(fila.get('DNI', '')).strip()
+                if not dni_raw or dni_raw.upper() in ['NAN', 'NONE', '<NA>', '']: continue
+                dni = dni_raw.replace('.0', '') 
+                
+                # Rescatamos el cargo oficial haciendo JOIN con la tabla 'cargos'
+                query_lookup = """
+                    SELECT p.id_personal, c.nombre_cargo 
+                    FROM personal p
+                    LEFT JOIN cargos c ON p.id_cargo = c.id_cargo
+                    WHERE p.dni = ?
+                """
+                cursor.execute(query_lookup, (dni,))
+                res_p = cursor.fetchone()
+                
+                if not res_p:
+                    nombres_err = f"{fila.get('PATERNO','')} {fila.get('MATERNO','')}"
+                    dnis_no_registrados.append(f"<b>{dni}</b> - {nombres_err}")
+                else:
+                    mapa_personal[dni] = {
+                        'id': res_p[0],
+                        'cargo_bd': res_p[1] if res_p[1] else "TRABAJADOR"
+                    }
+
+            if dnis_no_registrados:
+                total = len(dnis_no_registrados)
+                lista_items = "".join([f"<li>{item}</li>" for item in dnis_no_registrados])
+                mensaje_html = f"""
+                <div class='mb-2'>
+                    <i class="bi bi-exclamation-octagon-fill text-danger me-2"></i>
+                    <strong>Se encontraron {total} trabajadores que NO están registrados en Escalafón.</strong>
+                </div>
+                <div style='column-count: 3; column-gap: 20px; font-size: 0.75rem; border-top: 1px solid #f5c2c7; padding-top: 10px;'>
+                    <ul class='mb-0' style='padding-left: 15px; list-style-type: square;'>{lista_items}</ul>
+                </div>"""
+                raise ValueError(mensaje_html)
+
+            # =================================================================
+            # 🔥 FASE 1: PROCESAMIENTO UPSERT (Sincronización Total)
+            # =================================================================
+            for _, fila in dataframe.iterrows():
+                dni_raw = str(fila.get('DNI', '')).strip()
+                if not dni_raw or dni_raw.upper() in ['NAN', 'NONE', '<NA>', '']: continue
+                dni = dni_raw.replace('.0', '')
+                
+                datos_maestros = mapa_personal[dni]
+                id_personal = datos_maestros['id']
+
+                # 1. Lógica de Cargo: Prioridad Excel -> Si no, el de la BD
+                cargo_final = limpiar_txt(fila.get('CARGO')) or datos_maestros['cargo_bd']
+
+                # 2. Vinculación S10 Flexible (NP -> Actividad)
+                np_excel = str(fila.get('NP', '')).strip()
+                # Quitamos espacios para que 'P-100' coincida con 'P - 100'
+                cursor.execute("""
+                    SELECT id_config FROM presupuesto_config 
+                    WHERE REPLACE(np_codigo, ' ', '') = REPLACE(?, ' ', '') AND activo = 1
+                """, (np_excel,))
+                res_c = cursor.fetchone()
+                id_config = res_c[0] if res_c else None
+
+                # 3. Preparación de Montos y Tasas
+                v_basica = limpiar_num(fila.get('BASICA'))
+                v_sctr_s = limpiar_num(fila.get('SCTR'))
+                tasa_sctr = limpiar_num(fila.get('TASA_SCTR', 0))
+                
+                # Inteligencia: Si hay monto SCTR pero no tasa, la calculamos
+                if v_sctr_s > 0 and tasa_sctr == 0 and v_basica > 0:
+                    tasa_sctr = round((v_sctr_s / v_basica) * 100, 2)
+
+                nombres = f"{fila.get('PATERNO','')} {fila.get('MATERNO','')} {fila.get('NOMBRES','')}".strip()
+                m_pension = (limpiar_num(fila.get('DONP')) + limpiar_num(fila.get('DPROFU')) + 
+                             limpiar_num(fila.get('DHABITAT')) + limpiar_num(fila.get('DINTEGRA')) + 
+                             limpiar_num(fila.get('DPRIMA')))
+
+                # Sindicato
+                es_sindicalizado = 1 if str(fila.get('SINDIC', '')).upper() == 'SI' else 0
+
+                # 4. ¿Actualizar o Insertar?
+                cursor.execute("SELECT id_detalle FROM detalle_planilla WHERE id_planilla = ? AND id_personal = ?", 
+                               (id_planilla, id_personal))
+                res_existente = cursor.fetchone()
+
+                if res_existente:
+                    # 🔄 CASO A: ACTUALIZAR REGISTRO EXISTENTE
+                    nuevo_id_detalle = res_existente[0]
+                    query_update = """
+                        UPDATE detalle_planilla SET 
+                            id_config = ?, nombre_completo = ?, cargo_actual = ?, sueldo_basico = ?, 
+                            asignacion_familiar = ?, d_viatico = ?, total_ingresos = ?, total_descuentos = ?, 
+                            neto_pagar = ?, aporte_essalud = ?, sctr = ?, sctr_onp = ?, cts = ?, 
+                            tasa_sctr = ?, monto_pension = ?, sistema_pensionario = ?, condicion_laboral = ?,
+                            dias_laborados = ?, horas_laboradas = ?, dias_falta = ?,
+                            dias_computables = ?, dias_subsidiados = ?, faltas_tardanzas = ?,
+                            nocuenta = ?, cuspp = ?, autogenerado = ?, cuenta_cts = ?, 
+                            nivel = ?, tipo_trabajador = ?, ubicacion = ?, 
+                            es_sindicalizado = ?, desc_sindicato = ?,
+                            essalud_vida = ?, renta_4ta_5ta = ?, judiciales = ?,
+                            d_medico = ?, d_vacaciones = ?, d_permisos = ?, d_suspensiones = ?, d_otros_inasis = ?,
+                            observaciones = ?
+                        WHERE id_detalle = ?
+                    """
+                    cursor.execute(query_update, (
+                        id_config, nombres, cargo_final, v_basica,
+                        limpiar_num(fila.get('FAMILI')), limpiar_num(fila.get('REFMOV')),
+                        limpiar_num(fila.get('TOTALBRU')), limpiar_num(fila.get('TDESCUEN')), limpiar_num(fila.get('NCOBRAR')),
+                        limpiar_num(fila.get('RPS')), v_sctr_s, limpiar_num(fila.get('SCTR ONP')), limpiar_num(fila.get('CTS')),
+                        tasa_sctr, m_pension, str(fila.get('REGPENS', 'ONP')), str(fila.get('CONDICION', '')),
+                        int(limpiar_num(fila.get('DIASTRAB', 30))), int(limpiar_num(fila.get('HORAS', 176))), int(limpiar_num(fila.get('FALTAS', 0))),
+                        int(limpiar_num(fila.get('DIASCONT', 30))), int(limpiar_num(fila.get('DIASSUBSI', 0))), limpiar_num(fila.get('TARDANZAS')),
+                        limpiar_txt(fila.get('NCUENTA')), limpiar_txt(fila.get('AFPCUPPS')), limpiar_txt(fila.get('AUTOG')), 
+                        limpiar_txt(fila.get('NCTACTS')), limpiar_txt(fila.get('NIVEL')), limpiar_txt(fila.get('TIPOTRAB')), 
+                        limpiar_txt(fila.get('UBICACION')), es_sindicalizado, limpiar_num(fila.get('DSINDIC')),
+                        limpiar_num(fila.get('DESSAVI')), limpiar_num(fila.get('DQUINTACAT')), limpiar_num(fila.get('DJUDIC')),
+                        int(limpiar_num(fila.get('DMEDICO'))), int(limpiar_num(fila.get('DVACAC'))), int(limpiar_num(fila.get('DPERMIS'))),
+                        int(limpiar_num(fila.get('DSUSPEN'))), int(limpiar_num(fila.get('DOTROS'))),
+                        limpiar_txt(fila.get('OBSERV')), nuevo_id_detalle
+                    ))
+                    cursor.execute("DELETE FROM detalle_conceptos_trabajador WHERE id_detalle = ?", (nuevo_id_detalle,))
+                
+                else:
+                    # 🆕 CASO B: INSERTAR NUEVO REGISTRO (Si no estaba en la planilla generada)
+                    query_insert = """
+                        SET NOCOUNT ON;
+                        INSERT INTO detalle_planilla (
+                            id_planilla, id_personal, id_config, dni_trabajador, nombre_completo, cargo_actual,
+                            sueldo_basico, total_ingresos, total_descuentos, neto_pagar,
+                            aporte_essalud, sctr, sctr_onp, cts, tasa_sctr, sistema_pensionario, monto_pension,
+                            condicion_laboral, nivel, ubicacion, es_sindicalizado, desc_sindicato, cuspp, nocuenta
+                        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);
+                        SELECT CAST(SCOPE_IDENTITY() AS INT);
+                    """
+                    cursor.execute(query_insert, (
+                        id_planilla, id_personal, id_config, dni, nombres, cargo_final,
+                        v_basica, limpiar_num(fila.get('TOTALBRU')), limpiar_num(fila.get('TDESCUEN')), limpiar_num(fila.get('NCOBRAR')),
+                        limpiar_num(fila.get('RPS')), v_sctr_s, limpiar_num(fila.get('SCTR ONP')), limpiar_num(fila.get('CTS')), tasa_sctr,
+                        str(fila.get('REGPENS', 'ONP')), m_pension, str(fila.get('CONDICION', '')),
+                        limpiar_txt(fila.get('NIVEL')), limpiar_txt(fila.get('UBICACION')), es_sindicalizado, 
+                        limpiar_num(fila.get('DSINDIC')), limpiar_txt(fila.get('AFPCUPPS')), limpiar_txt(fila.get('NCUENTA'))
+                    ))
+                    nuevo_id_detalle = cursor.fetchone()[0]
+
+                # 5. Conceptos Dinámicos (Bonos y Retenciones)
+                mapeo_dinamicos = {
+                    'REUNIF': 1, 'TPH-COSVID': 2, 'PERSON': 3, 'BONESP': 4, 'BONODIF': 6, 'DS276': 7, 
+                    'DU03794': 8, 'INCFONV': 9, 'D.L.26504': 10, 'DS 326-2025-EF': 11, 'INCAFP': 12, 
+                    'DL268-EF': 13, 'Encarg': 14, 'DCAFAE': 15, 'DAREQUIPA': 16, 'DA/SOLID': 17, 
+                    'DCENTROCOOP': 18, 'DCOOPAC': 19, 'DLIMENTOS': 20, 'DSMILAGROS': 21, 'DMILPOCOOP': 22, 
+                    'DMAYNAS': 23, 'RIMAC': 24, 'DE-SIN': 25
+                }
+                for columna_excel, id_concepto in mapeo_dinamicos.items():
+                    monto = limpiar_num(fila.get(columna_excel, 0))
+                    if monto > 0:
+                        cursor.execute("INSERT INTO detalle_conceptos_trabajador (id_detalle, id_concepto, monto) VALUES (?, ?, ?)", 
+                                       (nuevo_id_detalle, id_concepto, monto))
+
+            conn.commit()
+            return True
+            
+        except Exception as e:
+            conn.rollback()
+            raise e 
         finally:
             cursor.close()

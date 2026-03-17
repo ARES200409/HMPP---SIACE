@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Boleta de Pago Histórica</title>
+    <style>
+        @page {
+            size: A4 landscape;
+            margin: 1cm 1.5cm;
+            
+            /* DEFINIMOS EL MARCO DEL PIE DE PÁGINA */
+            @frame footer_frame {
+                -pdf-frame-content: footer_content;
+                bottom: 0.5cm;
+                left: 1.5cm;
+                width: 26.7cm;
+                height: 1cm;
+            }
+        }
+
+        body { 
+            font-family: Helvetica, Arial, sans-serif; 
+            font-size: 10px; 
+            color: #000; 
+            line-height: 1.2; 
+        }
+
+        /* === 1. ENCABEZADO === */
+        .header-table { width: 100%; border-bottom: 2px solid #000; padding-bottom: 5px; margin-bottom: 15px; }
+        .header-left { width: 70%; vertical-align: middle; }
+        .header-right { width: 30%; text-align: right; vertical-align: middle; }
+
+        .company-name { font-size: 16px; font-weight: bold; text-transform: uppercase; margin: 0; line-height: 1.2; }
+        .sub-title { font-size: 11px; font-weight: bold; margin: 0; line-height: 1.2; } 
+        .doc-title { font-size: 14px; font-weight: bold; margin: 0; line-height: 1.2; } 
+
+        .period-box {
+            border: 1px solid #000;
+            background-color: #f0f0f0;
+            padding: 5px;
+            text-align: center;
+            font-weight: bold;
+            width: 140px;
+            float: right;
+        }
+        .period-label { font-size: 12px; border-bottom: 1px solid #999; margin-bottom: 2px; display: block;}
+        .period-value { font-size: 12px; text-transform: uppercase; }
+
+        /* === 2. SECCIONES === */
+        .section-title {
+            background-color: #333; 
+            color: #fff; 
+            padding: 3px 5px; 
+            font-weight: bold; 
+            font-size: 10px; 
+            margin-top: 5px;
+            margin-bottom: 5px; 
+            text-transform: uppercase;
+            border: 1px solid #000;
+        }
+
+        /* === 3. DATOS PERSONALES === */
+        .info-table { width: 100%; border-collapse: collapse; }
+        .info-table td { padding: 2px 3px; font-size: 10px; vertical-align: bottom; }
+        .label { font-weight: bold; width: 13%; }
+        .value { width: 20%; border-bottom: 1px dotted #000; padding-bottom: 0px; }
+
+        /* === 4. TABLA FINANCIERA === */
+        .concept-table { 
+            width: 100%; 
+            border-collapse: collapse; 
+            border: 1px solid #000; 
+        }
+
+        .th-col {
+            background-color: #e0e0e0;
+            border-bottom: 1px solid #000;
+            border-right: 1px solid #000;
+            font-weight: bold;
+            text-align: center;
+            padding: 4px;
+            font-size: 9px;
+            width: 25%;
+        }
+
+        .td-col {
+            border-right: 1px solid #000;
+            vertical-align: top;
+            padding: 5px;
+        }
+
+        /* === 5. FILAS DE ÍTEMS === */
+        .item-row { 
+            margin-bottom: 2px; 
+            border-bottom: 1px solid #fff; 
+            padding-bottom: 1px; 
+        }
+        .item-name { display: inline-block; width: 72%; text-align: left; font-size: 10px; }
+        .item-amount { display: inline-block; width: 26%; text-align: right; font-weight: bold; font-size: 10px; }
+
+        .total-row td {
+            border-top: 1px solid #000;
+            border-right: 1px solid #000;
+            background-color: #f9f9f9;
+            padding: 5px;
+            font-weight: bold;
+            text-align: right;
+            font-size: 10px;
+        }
+
+        /* === NETO Y FIRMAS === */
+        .neto-box {
+            border: 2px solid #000;
+            padding: 8px;
+            text-align: center;
+            background-color: #fff;
+            margin-left: 10px;
+        }
+        .signatures { margin-top: 30px; width: 100%; } 
+        .sig-box { text-align: center; width: 35%; border-top: 1px solid #000; padding-top: 5px; font-size: 9px; }
+        
+        .footer-text { text-align: center; font-size: 8px; color: #555; width: 100%; border-top: 1px solid #ccc; padding-top: 2px;}
+    </style>
+</head>
+<body>
+
+    <div id="footer_content">
+        <div class="footer-text">
+            HMPP - Sistema de Escalafón y Planillas | Reconstrucción de Planilla Histórica | Impreso el: {{ fecha_hoy }} | Pág. <pdf:pagenumber />
+        </div>
+    </div>
+
+    <table class="header-table">
+        <tr>
+            <td class="header-left">
+                <table>
+                    <tr>
+                        <td style="width: 70px;">
+                            {% if logo_path %}
+                                <img src="{{ logo_path }}" style="width: 60px; height: auto;">
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="company-name">HONORABLE MUNICIPALIDAD PROVINCIAL DE PASCO</div>
+                            <div class="doc-title">BOLETA UNICA DE PAGO - {{ d.regimen_laboral }}</div>
+                            <div class="sub-title">GESTIÓN DE RECONSTRUCCIÓN HISTÓRICA</div>
+                            <div class="sub-title">RUC: 20176735725</div>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+            <td class="header-right">
+                <div class="period-box">
+                    <span class="period-label">PERIODO</span>
+                    <span class="period-value">
+                        {{ d.mes }} {{ d.anio }}
+                    </span>
+                </div>
+            </td>
+        </tr>
+    </table>
+
+    <div class="section-title">I. DATOS PERSONALES Y LABORALES</div>
+    <table class="info-table">
+        <tr>
+            <td class="label">Apellidos y Nombres:</td>
+            <td class="value" colspan="3" style="font-weight: bold;">{{ d.nombre_completo }}</td>
+            <td class="label">DNI:</td>
+            <td class="value" style="font-weight: bold;">{{ d.dni_trabajador }}</td>
+        </tr>
+        <tr>
+            <td class="label">Cargo / Puesto:</td>
+            <td class="value">{{ d.cargo_actual|truncate(35) }}</td>
+            <td class="label">Unidad:</td>
+            <td class="value">{{ d.oficina_nombre|truncate(35) }}</td>
+            <td class="label">Nivel Remun:</td>
+            <td class="value">{{ d.nivel_remunerativo }}</td>
+        </tr>
+        <tr>
+            <td class="label">Régimen:</td>
+            <td class="value">{{ d.regimen_laboral }}</td>
+            <td class="label">Condición:</td>
+            <td class="value">{{ d.condicion_laboral }}</td>
+            <td class="label">Pensión:</td>
+            <td class="value">{{ d.sistema_pensionario }}</td>
+        </tr>
+        <tr>
+            <td class="label">Días Laborados:</td>
+            <td class="value" style="font-weight: bold;">{{ d.dias_laborados }} días</td>
+            <td class="label">Faltas:</td>
+            <td class="value">{{ d.faltas }} días</td>
+            <td class="label">Moneda:</td><td class="value" style="border:none; font-weight:bold;">{{ simbolo }}</td>
+        </tr>
+    </table>
+
+    <div class="section-title">II. DETALLE DE REMUNERACIONES</div>
+
+    <table class="concept-table">
+        <thead>
+            <tr>
+                <th class="th-col">INGRESOS</th>
+                <th class="th-col">DESCUENTOS</th>
+                <th class="th-col">APORTES (EMPLEADOR)</th>
+                <th class="th-col" style="border-right: none;">CONCEPTOS EXCEP.</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td class="td-col">
+                    {% for i in ingresos %}
+                    <div class="item-row">
+                        <span class="item-name">{{ i.descripcion }}: {{ simbolo }}</span>
+                        <span class="item-amount">{{ "%.2f"|format(i.monto) }}</span>
+                    </div>
+                    {% else %}
+                        <div style="text-align:center; color:#888; font-size:9px;"><br><em>Sin ingresos registrados</em></div>
+                    {% endfor %}
+                </td>
+
+                <td class="td-col">
+                    {% for des in descuentos %}
+                    <div class="item-row">
+                        <span class="item-name">{{ des.descripcion }}: {{ simbolo }}</span>
+                        <span class="item-amount">{{ "%.2f"|format(des.monto) }}</span>
+                    </div>
+                    {% else %}
+                        <div style="text-align:center; color:#888; font-size:9px;"><br><em>Sin descuentos registrados</em></div>
+                    {% endfor %}
+                </td>
+
+                <td class="td-col">
+                    {% for ap in aportes %}
+                    <div class="item-row">
+                        <span class="item-name">{{ ap.descripcion }}: {{ simbolo }}</span>
+                        <span class="item-amount">{{ "%.2f"|format(ap.monto) }}</span>
+                    </div>
+                    {% else %}
+                        <div style="text-align: center; color: #888; margin-top: 10px; font-size: 9px;">
+                            <br><em>No registra aportes patronales</em>
+                        </div>
+                    {% endfor %}
+                </td>
+
+                <td class="td-col" style="border-right: none;">
+                    {% for ex in excepcionales %}
+                    <div class="item-row">
+                        <span class="item-name">{{ ex.descripcion }}: {{ simbolo }}</span>
+                        <span class="item-amount">{{ "%.2f"|format(ex.monto) }}</span>
+                    </div>
+                    {% else %}
+                        <div style="text-align: center; color: #888; margin-top: 10px; font-size: 9px;">
+                            <br><em>N/A</em>
+                        </div>
+                    {% endfor %}
+                </td>
+            </tr>
+
+            <tr class="total-row">
+                <td>TOTAL INGRESOS: {{ simbolo }} {{ "%.2f"|format(t_ing) }}</td>
+                <td>TOTAL DESCUENTOS: {{ simbolo }} {{ "%.2f"|format(t_desc) }}</td>
+                <td>TOTAL APORTES: {{ simbolo }} {{ "%.2f"|format(t_aportes) }}</td>
+                <td style="border-right: none;">TOTAL EXCEP: {{ simbolo }} {{ "%.2f"|format(t_excep) }}</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <table style="width: 100%; margin-top: 10px;">
+        <tr>
+            <td style="width: 65%; vertical-align: top; font-size: 9px;">
+                <strong>DECLARACIÓN JURADA:</strong><br>
+                Recibí conforme el importe neto que figura en la presente boleta, no teniendo reclamo alguno posterior.
+                <br><br>
+                <strong>Observaciones de la Transcripción:</strong> 
+                {% if d.observaciones %}
+                    {{ d.observaciones }}
+                {% else %}
+                    <em>Ninguna.</em>
+                {% endif %}
+            </td>
+            <td style="width: 35%;">
+                <div class="neto-box">
+                    <span style="font-size: 11px; font-weight: bold; color: #555;">NETO A PAGAR</span><br>
+                    <span style="font-size: 11px; font-weight: bold; color: #555;">&nbsp;</span><br>
+                    <span style="font-size: 18px; font-weight: bold;">{{ simbolo }} {{ "%.2f"|format(neto) }}</span>
+                </div>
+            </td>
+        </tr>
+    </table>
+
+    <table class="signatures">
+        <tr>
+            <td style="width: 10%;"></td>
+            <td class="sig-box">
+                <br><br><br>
+                __________________________<br>
+                JEFE DE RR.HH / ESCALAFÓN<br>H.M.P.P
+            </td>
+            <td style="width: 10%;"></td>
+            <td class="sig-box">
+                <br><br><br>
+                __________________________<br>
+                {{ d.nombre_completo }}<br>DNI: {{ d.dni_trabajador }}
+            </td>
+            <td style="width: 10%;"></td>
+        </tr>
+    </table>
+
+</body>
+</html>

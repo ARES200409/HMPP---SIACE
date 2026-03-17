@@ -18,6 +18,13 @@
             <i class="bi bi-arrow-left"></i> Volver
         </a>
         
+        {# 🔥 BOTÓN DE CARGA MASIVA (Abre el Modal) - Solo si está ABIERTA #}
+        {% if planilla.estado == 'ABIERTA' %}
+        <button type="button" class="btn btn-success ms-2 shadow-sm fw-bold" data-bs-toggle="modal" data-bs-target="#modalCargaMasiva">
+            <i class="bi bi-file-earmark-excel-fill me-2"></i> CARGA MASIVA
+        </button>
+        {% endif %}
+
         {# BOTÓN DE IMPRESIÓN OFICIAL (GATILLO DEL PROCESO) #}
         {# Al hacer click: 1. Abre PDF 2. Marca la planilla como impresa en BD #}
         <a href="{{ url_for('rrhh.imprimir_planilla_oficial', id_planilla=planilla.id_planilla) }}" 
@@ -140,6 +147,72 @@
     </div>
 </div>
 
+{% if planilla.estado == 'ABIERTA' %}
+<div class="modal fade" id="modalCargaMasiva" tabindex="-1" aria-labelledby="modalCargaMasivaLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-success shadow-lg">
+      <div class="modal-header bg-success text-white py-3">
+        <h5 class="modal-title fw-bold" id="modalCargaMasivaLabel">
+            <i class="bi bi-file-earmark-excel-fill me-2"></i>Importar Sábana de Planilla
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form action="{{ url_for('rrhh.importar_excel_planilla', id_planilla=planilla.id_planilla) }}" method="POST" enctype="multipart/form-data">
+          <div class="modal-body bg-light p-4">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              
+              <div class="alert alert-info py-2 px-3 mb-4 d-flex justify-content-between align-items-center shadow-sm border-info">
+                  <div>
+                      <i class="bi bi-info-circle-fill me-2"></i>
+                      <span class="small fw-bold">¿No tienes el formato oficial?</span>
+                  </div>
+                  <a href="{{ url_for('rrhh.descargar_plantilla_excel') }}" class="btn btn-sm btn-info text-white fw-bold shadow-sm">
+                      <i class="bi bi-download me-1"></i> Descargar Plantilla
+                  </a>
+              </div>
+              
+              <div class="mb-4">
+                  <label class="form-label fw-bold text-dark"><i class="bi bi-1-circle-fill text-success me-1"></i> Seleccione el Archivo Excel</label>
+                  <input class="form-control border-success form-control-lg" type="file" name="archivo_excel" accept=".xlsx, .xls" required>
+                  <small class="text-muted d-block mt-1">Asegúrese de usar la plantilla descargada arriba.</small>
+              </div>
+
+              <div class="mb-4">
+                  <label class="form-label fw-bold text-dark"><i class="bi bi-2-circle-fill text-success me-1"></i> Periodo a extraer (Ej: 202601):</label>
+                  <small class="text-muted d-block mt-1">Según el PERIODO que se encuentre la planilla.</small>
+                  <small class="text-muted d-block mt-1">                                               </small>
+                  <input type="text" class="form-control border-success fw-bold text-secondary" name="filtro_periodo" placeholder="YYYYMM" required>
+                  <small class="text-muted d-block mt-1">El sistema buscará este valor en la columna "PERIODO".</small>
+              </div>
+              
+              <div class="mb-2">
+                  <label class="form-label fw-bold text-dark"><i class="bi bi-3-circle-fill text-success me-1"></i> Extraer trabajadores del Régimen:</label>
+                  <small class="text-muted d-block mt-1">Según el RÉGIMEN que se encuentre la planilla.</small>
+                  <small class="text-muted d-block mt-1">                                               </small>
+                  <select class="form-select border-success form-select-lg fw-bold text-secondary" name="filtro_condicion" required>
+                      <option value="">-- Seleccione el Tipo de Contrato --</option>
+                      <option value="CAS">1 - D.L. 1057 (CAS Regular)</option>
+                      <option value="NOMBRADO">2 - D.L. 276 (Nombrados)</option>
+                      <option value="728">3 - D.L. 728</option>
+                      <option value="LOCACION">4 - Locación de Servicios (Terceros)</option>
+                      <option value="CONFIANZA">5 - CAS Confianza / Cargos de Confianza</option>
+                      <option value="ELEGIDO">Elegidos (Alcalde / Regidores)</option>
+                      <option value="TODOS">Importar TODOS mezclados (Sábana Completa)</option>
+                  </select>
+                  <small class="text-muted d-block mt-1">El sistema buscará a estos trabajadores en la columna "CONDICION" del Excel.</small>
+              </div>
+          </div>
+          <div class="modal-footer bg-white">
+            <button type="button" class="btn btn-outline-secondary fw-bold px-4" data-bs-dismiss="modal">Cancelar</button>
+            <button type="submit" class="btn btn-success fw-bold px-4" onclick="this.innerHTML='<i class=\'bi bi-hourglass-split\'></i> Procesando...'; this.style.pointerEvents='none'; this.form.submit();">
+                <i class="bi bi-cloud-arrow-up-fill me-1"></i> Iniciar Importación
+            </button>
+          </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
 {% else %}
 {# Fallback: Si el ID de planilla no existe #}
 <div class="alert alert-warning text-center my-5 shadow-sm">

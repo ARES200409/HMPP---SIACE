@@ -877,6 +877,7 @@ def ver_record_laboral_detalle(personal_id):
     """
     Carga la ficha de pagos. 
     FIX: Sincroniza la Unidad Administrativa para evitar el 'None'.
+    🚀 ACTUALIZACIÓN: Envía las dos listas separadas (Modernos e Históricos) al HTML.
     """
     try:
         legajo_service = current_app.config['LEGAJO_SERVICE']
@@ -898,7 +899,8 @@ def ver_record_laboral_detalle(personal_id):
         return render_template(
             'admin/ver_record_laboral_detalle.html',
             persona=persona,
-            pagos=legajo_completo.get('record_laboral', [])
+            pagos=legajo_completo.get('record_laboral', []), # Lista 1: Modernos (RRHH)
+            historicos=legajo_completo.get('historico_laboral', []) # 🚀 Lista 2: Bóveda (Escalafón)
         )
     except Exception as e:
         current_app.logger.error(f"Error al cargar historial de pagos para {personal_id}: {e}")
@@ -1066,44 +1068,714 @@ def procesar_arco(id_solicitud, accion):
 @login_required
 @role_required('AdministradorLegajos', 'Sistemas')
 def papelera_planillas():
+    """
+    Carga la vista de la papelera unificada.
+    Muestra registros eliminados tanto de RRHH como de la Bóveda Histórica.
+    """
     repo = PlanillaRepository()
     
-    # CORRECCIÓN: Usamos el nombre exacto que definimos en el repositorio
-    planillas_borradas = repo.obtener_planillas_eliminadas() 
-    
+    try:
+        # 🚀 Llamamos al método híbrido que hace el UNION ALL en el SQL
+        planillas_borradas = repo.obtener_planillas_eliminadas()
+        
+        # DEBUG: Esto te permite ver en la terminal negra cuántos registros llegan
+        print(f"---[PAPELERA]--- Se enviaron {len(planillas_borradas)} registros al HTML.")
+        
+    except Exception as e:
+        # Si algo falla en el repositorio, evitamos que la página explote (Error 500)
+        current_app.logger.error(f"Error al cargar papelera de planillas: {str(e)}")
+        planillas_borradas = []
+        flash('Ocurrió un inconveniente al conectar con la base de datos de la papelera.', 'danger')
+
+    # El nombre de la variable 'planillas' debe coincidir con el 'for p in planillas' de tu HTML
     return render_template('admin/papelera_planillas.html', planillas=planillas_borradas)
 
 @legajo_bp.route('/papelera/planillas/restaurar/<int:id>', methods=['POST'])
 @login_required
-# RECOMENDACIÓN: Agregamos 'Sistemas' por si el administrador principal no está
 @role_required('AdministradorLegajos', 'Sistemas')
 def restaurar_planilla(id):
+    """
+    Saca una planilla de la papelera y la devuelve al estado activo.
+    Identifica automáticamente si es de RRHH (Moderna) o de Escalafón (Histórica).
+    """
     repo = PlanillaRepository()
     
-    # CORRECCIÓN: Usamos el nombre 'restaurar_planilla_logica' que está en tu repo
-    if repo.restaurar_planilla_logica(id):
-        flash('✅ Planilla restaurada con éxito. Ya es visible nuevamente en RRHH.', 'success')
-    else:
-        flash('❌ No se pudo restaurar la planilla. Inténtelo de nuevo.', 'danger')
-        
+    # 🚀 CAPTURAMOS EL ORIGEN: Viene del parámetro en la URL del botón
+    # Si no se especifica, por seguridad asumimos 'MODERNA'
+    origen = request.args.get('origen', 'MODERNA')
+
+    try:
+        # Llamamos al método híbrido que actualizamos en el repositorio
+        if repo.restaurar_planilla_logica(id, origen):
+            
+            # 🛡️ REGISTRO EN AUDITORÍA
+            # Guardamos quién devolvió el registro a la vida
+            try:
+                audit_service = current_app.config.get('AUDIT_SERVICE')
+                if audit_service:
+                    audit_service.log(
+                        current_user.id, 
+                        'Papelera', 
+                        'RESTAURAR_REGISTRO', 
+                        f"El usuario {current_user.username} restauró la planilla ID #{id} ({origen})."
+                    )
+            except Exception as audit_err:
+                current_app.logger.error(f"Error registrando auditoría de restauración: {audit_err}")
+
+            flash(f'✅ Planilla {origen} restaurada con éxito. Ya es visible en su módulo correspondiente.', 'success')
+        else:
+            flash(f'❌ No se pudo encontrar la planilla #{id} en {origen} para restaurar.', 'warning')
+
+    except Exception as e:
+        current_app.logger.error(f"Error crítico al restaurar planilla: {str(e)}")
+        flash(f'⚠️ Error técnico al intentar restaurar: {str(e)}', 'danger')
+
     return redirect(url_for('legajo.papelera_planillas'))
 
 @legajo_bp.route('/papelera/planillas/eliminar_permanente/<int:id>', methods=['POST'])
 @login_required
 @role_required('AdministradorLegajos', 'Sistemas')
 def eliminar_permanente_planilla(id):
+    """
+    Elimina físicamente una planilla y sus detalles/conceptos.
+    Soporta registros de RRHH y la Bóveda Histórica de Escalafón.
+    """
     repo = PlanillaRepository()
-    if repo.eliminar_planilla_permanente(id):
-        flash('🗑️ Planilla eliminada permanentemente del sistema.', 'success')
-    else:
-        flash('❌ Error al intentar eliminar permanentemente.', 'danger')
+    
+    # 🚀 CAPTURAMOS EL ORIGEN: Viene del parámetro enviado en el URL del HTML
+    # Si por algún motivo no viene, por defecto asumimos 'MODERNA'
+    origen = request.args.get('origen', 'MODERNA')
+
+    try:
+        # Ejecutamos el borrado físico en el repositorio (Híbrido)
+        if repo.eliminar_planilla_permanente(id, origen):
+            
+            # 🛡️ REGISTRO EN AUDITORÍA
+            # Es obligatorio registrar quién destruyó un dato permanentemente
+            try:
+                audit_service = current_app.config.get('AUDIT_SERVICE')
+                if audit_service:
+                    audit_service.log(
+                        current_user.id, 
+                        'Papelera', 
+                        'ELIMINACION_FISICA', 
+                        f"Usuario {current_user.username} eliminó permanentemente la planilla ID #{id} de origen {origen}."
+                    )
+            except Exception as audit_err:
+                current_app.logger.error(f"Error auditoría eliminación física: {audit_err}")
+
+            flash(f'🗑️ Registro ({origen}) eliminado permanentemente del sistema.', 'success')
+        else:
+            flash(f'⚠️ No se encontró el registro #{id} en la tabla {origen} para eliminar.', 'warning')
+
+    except Exception as e:
+        # Manejo de errores de base de datos (ej: errores de Foreign Key)
+        current_app.logger.error(f"Error crítico en eliminación permanente: {str(e)}")
+        flash(f'❌ Error técnico: {str(e)}', 'danger')
+
     return redirect(url_for('legajo.papelera_planillas'))
 
 @legajo_bp.route('/papelera/planillas/vaciar', methods=['POST'])
 @login_required
 @role_required('AdministradorLegajos', 'Sistemas')
 def vaciar_papelera_planillas():
+    """
+    Ruta para la eliminación definitiva de todos los registros en la papelera.
+    Limpia tanto el módulo de RRHH como el histórico de Escalafón.
+    """
     repo = PlanillaRepository()
-    if repo.vaciar_papelera_planillas():
-        flash('🔥 La papelera de planillas ha sido vaciada por completo.', 'success')
+    
+    try:
+        # Ejecutamos la limpieza masiva en el repositorio
+        if repo.vaciar_papelera_planillas():
+            
+            # 🛡️ REGISTRO EN AUDITORÍA (Opcional, según tu implementación)
+            # Es vital saber quién borró permanentemente los datos.
+            try:
+                audit_service = current_app.config.get('AUDIT_SERVICE')
+                if audit_service:
+                    audit_service.log(
+                        current_user.id, 
+                        'Planillas', 
+                        'VACIAR_PAPELERA', 
+                        f"El usuario {current_user.username} vació la papelera de planillas unificada."
+                    )
+            except Exception as audit_err:
+                current_app.logger.error(f"Error al registrar auditoría de vaciado: {audit_err}")
+
+            flash('🔥 La papelera de planillas ha sido vaciada por completo (RRHH e Históricos).', 'success')
+        else:
+            flash('⚠️ No se encontraron registros para eliminar o el proceso fue interrumpido.', 'warning')
+            
+    except Exception as e:
+        # En caso de un fallo en la base de datos (ej. bloqueo de tablas)
+        current_app.logger.error(f"Error crítico al vaciar papelera: {str(e)}")
+        flash(f'❌ Error técnico al intentar vaciar la papelera: {str(e)}', 'danger')
+
     return redirect(url_for('legajo.papelera_planillas'))
+
+# ==============================================================================
+# MÓDULO: PLANILLAS HISTÓRICAS (Acceso Exclusivo: Escalafón / AdministradorLegajos)
+# ==============================================================================
+import os
+import base64
+import traceback
+from datetime import datetime
+from io import BytesIO
+from xhtml2pdf import pisa
+from werkzeug.utils import secure_filename
+from app.database import get_db_read, get_db_write 
+from flask import request, jsonify, render_template, current_app, flash, redirect, url_for
+from flask_login import login_required, current_user
+# ... (Asegúrate de tener tus importaciones previas aquí)
+
+# 1. LISTADO PRINCIPAL
+@legajo_bp.route('/planillas-historicas/buscar', methods=['GET'])
+@login_required
+@role_required('AdministradorLegajos')
+def listar_personal_historico():
+    form = FiltroPersonalForm(request.args)
+    page = request.args.get('page', 1, type=int)
+    
+    filters = {
+        'dni': form.dni.data, 
+        'nombres': form.nombres.data
+    }
+    legajo_service = current_app.config['LEGAJO_SERVICE']
+    try:
+        pagination = legajo_service.get_personal_historico_paginated(page, 15, filters)
+        return render_template('admin/listar_personal_historico.html', form=form, pagination=pagination)
+    except Exception as e:
+        current_app.logger.error(f"Error en buscador histórico: {str(e)}")
+        flash("Error al cargar la lista de personal histórico.", "danger")
+        return redirect(url_for('legajo.dashboard'))
+
+
+# 2. DESIGNAR PERSONAL
+@legajo_bp.route('/designar-historico', methods=['POST'])
+@login_required
+@role_required('AdministradorLegajos')
+def designar_personal_historico():
+    dni = request.form.get('dni_busqueda')
+    if not dni:
+        flash('Debe ingresar un DNI válido.', 'warning')
+        return redirect(url_for('legajo.listar_personal_historico'))
+    try:
+        conexion = get_db_write()
+        cursor = conexion.cursor()
+        sql = "UPDATE personal SET tipo_registro = 1 WHERE dni = ?"
+        cursor.execute(sql, (dni,))
+        if cursor.rowcount > 0:
+            conexion.commit()
+            flash(f'Éxito: El trabajador con DNI {dni} ha sido habilitado para registro histórico.', 'success')
+        else:
+            flash(f'Error: El DNI {dni} no existe en la base de datos general.', 'danger')
+        cursor.close()
+    except Exception as e:
+        flash(f'Error al procesar la designación: {str(e)}', 'danger')
+    return redirect(url_for('legajo.listar_personal_historico'))
+
+
+# 3. GUARDAR LOS DATOS DINÁMICOS (TRANSCRIPCIÓN MANUAL)
+@legajo_bp.route('/guardar_planilla_historica', methods=['POST'])
+@login_required
+@role_required('AdministradorLegajos')
+def guardar_planilla_historica():
+    datos = request.get_json()
+    if not datos:
+        return jsonify({"estado": "error", "mensaje": "No se recibieron datos"}), 400
+
+    try:
+        conexion = get_db_write() 
+        cursor = conexion.cursor()
+        
+        # 🚀 A. Guardar Cabecera (AHORA CON TODOS LOS DATOS NUEVOS)
+        sql_cabecera = """
+            INSERT INTO Planillas_Historicas 
+            (id_personal, anio, mes, tipo_moneda, total_ingresos, total_descuentos, monto_neto, bloqueado,
+             cargo_historico, unidad_historica, nivel_historico, regimen_historico, condicion_historica, 
+             pension_historica, dias_laborados, faltas, observaciones)
+            OUTPUT INSERTED.id_planilla_historica
+            VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """
+        cursor.execute(sql_cabecera, (
+            datos['id_personal'], datos['anio'], datos['mes'], datos['moneda'],
+            datos['total_ingresos'], datos['total_descuentos'], datos['monto_neto'],
+            datos.get('cargo'), datos.get('unidad'), datos.get('nivel'), 
+            datos.get('regimen'), datos.get('condicion'), datos.get('pension'),
+            datos.get('dias_laborados', 30), datos.get('faltas', 0), datos.get('observaciones')
+        ))
+        id_planilla = cursor.fetchone()[0]
+        
+        # B. Guardar Conceptos Dinámicos
+        sql_detalle = """
+            INSERT INTO Planillas_Historicas_Conceptos
+            (id_planilla_historica, tipo_concepto, descripcion_concepto, monto)
+            VALUES (?, ?, ?, ?)
+        """
+        for concepto in datos['conceptos']:
+            cursor.execute(sql_detalle, (
+                id_planilla, concepto['tipo'], concepto['descripcion'], concepto['monto']
+            ))
+            
+        conexion.commit()
+        cursor.close()
+        return jsonify({"estado": "ok", "mensaje": "Planilla histórica guardada"}), 200
+
+    except Exception as e:
+        return jsonify({"estado": "error", "mensaje": str(e)}), 500
+
+
+# 3B. SUBIR ARCHIVO DE PLANILLA HISTÓRICA (El Escaneo Original)
+@legajo_bp.route('/subir_archivo_historico', methods=['POST'])
+@login_required
+@role_required('AdministradorLegajos')
+def subir_archivo_historico():
+    try:
+        id_personal = request.form.get('id_personal')
+        periodo = request.form.get('periodo') 
+        archivo = request.files.get('archivo')
+        
+        if not archivo or archivo.filename == '':
+            return jsonify({"estado": "error", "mensaje": "No se seleccionó archivo."}), 400
+            
+        anio, mes_num = periodo.split('-')
+        nombres_meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+        mes_texto = nombres_meses[int(mes_num) - 1]
+
+        directorio_destino = os.path.join(current_app.root_path, 'presentation', 'static', 'uploads', 'historicos')
+        os.makedirs(directorio_destino, exist_ok=True)
+        nombre_seguro = secure_filename(f"SCAN_{id_personal}_{anio}_{mes_num}_{archivo.filename}")
+        archivo.save(os.path.join(directorio_destino, nombre_seguro))
+        ruta_bd = f"uploads/historicos/{nombre_seguro}"
+
+        conexion = get_db_write()
+        cursor = conexion.cursor()
+        sql = """
+            INSERT INTO Planillas_Historicas 
+            (id_personal, anio, mes, tipo_moneda, total_ingresos, total_descuentos, monto_neto, ruta_escaneado, bloqueado)
+            VALUES (?, ?, ?, 'Documento Escaneado', 0, 0, 0, ?, 0)
+        """
+        cursor.execute(sql, (id_personal, anio, mes_texto, ruta_bd))
+        conexion.commit()
+        cursor.close()
+        
+        return jsonify({"estado": "ok", "mensaje": "Escaneo guardado correctamente."})
+    except Exception as e:
+        return jsonify({"estado": "error", "mensaje": str(e)}), 500
+
+
+# 4. OBTENER EL HISTORIAL
+@legajo_bp.route('/obtener_planillas_historicas/<int:id_personal>', methods=['GET'])
+@login_required
+@role_required('AdministradorLegajos', 'RRHH')
+def obtener_planillas_historicas(id_personal):
+    conexion = None
+    try:
+        conexion = get_db_read()
+        cursor = conexion.cursor()
+        sql = """
+            SELECT id_planilla_historica, anio, mes, tipo_moneda, 
+                   total_ingresos, total_descuentos, monto_neto, 
+                   ruta_escaneado, ruta_generado, ISNULL(bloqueado, 0) as bloqueado
+            FROM Planillas_Historicas 
+            WHERE id_personal = ?
+            ORDER BY anio DESC, 
+                     CASE mes 
+                        WHEN 'Enero' THEN 1 WHEN 'Febrero' THEN 2 WHEN 'Marzo' THEN 3 
+                        WHEN 'Abril' THEN 4 WHEN 'Mayo' THEN 5 WHEN 'Junio' THEN 6 
+                        WHEN 'Julio' THEN 7 WHEN 'Agosto' THEN 8 WHEN 'Septiembre' THEN 9 
+                        WHEN 'Octubre' THEN 10 WHEN 'Noviembre' THEN 11 WHEN 'Diciembre' THEN 12 
+                     END ASC
+        """
+        cursor.execute(sql, (id_personal,))
+        filas = cursor.fetchall()
+        
+        planillas = [{
+            "id": f[0], "anio": f[1], "mes": f[2], "moneda": f[3],
+            "ingresos": float(f[4] or 0), "descuentos": float(f[5] or 0), "neto": float(f[6] or 0),
+            "ruta_escaneado": f[7], "ruta_generado": f[8], "bloqueado": bool(f[9])
+        } for f in filas]
+            
+        cursor.close()
+        return jsonify({"estado": "ok", "data": planillas})
+    except Exception as e:
+        return jsonify({"estado": "error", "mensaje": str(e)}), 500
+    finally:
+        if conexion:
+            conexion.close()
+
+# 5, 6, 7 y Revertir
+@legajo_bp.route('/planillas-historicas/gestionar/<int:personal_id>', methods=['GET'])
+@login_required
+@role_required('AdministradorLegajos')
+def gestionar_historico_personal(personal_id):
+    legajo_service = current_app.config['LEGAJO_SERVICE']
+    legajo_data = legajo_service.get_personal_details(personal_id, current_user)
+    if not legajo_data or not legajo_data.get('personal'):
+        flash('El trabajador no existe.', 'danger')
+        return redirect(url_for('legajo.listar_personal_historico'))
+    return render_template('admin/gestionar_historico.html', persona=legajo_data['personal'])
+
+@legajo_bp.route('/eliminar_planilla_historica/<int:id_planilla>', methods=['DELETE'])
+@login_required
+@role_required('AdministradorLegajos')
+def eliminar_planilla_historica(id_planilla):
+    try:
+        conexion = get_db_write()
+        cursor = conexion.cursor()
+        cursor.execute("SELECT bloqueado FROM Planillas_Historicas WHERE id_planilla_historica = ?", (id_planilla,))
+        row = cursor.fetchone()
+        if row and row[0]:
+            return jsonify({"estado": "error", "mensaje": "Planilla bloqueada."}), 403
+        cursor.execute("DELETE FROM Planillas_Historicas_Conceptos WHERE id_planilla_historica = ?", (id_planilla,))
+        cursor.execute("DELETE FROM Planillas_Historicas WHERE id_planilla_historica = ?", (id_planilla,))
+        conexion.commit()
+        cursor.close()
+        return jsonify({"estado": "ok", "mensaje": "Planilla eliminada."})
+    except Exception as e:
+        return jsonify({"estado": "error", "mensaje": str(e)}), 500
+
+# ==============================================================================
+# 🔐 GESTIÓN DE SEGURIDAD: DESBLOQUEO CON TOKEN REAL
+# ==============================================================================
+
+@legajo_bp.route('/toggle_candado_historico/<int:id_planilla>', methods=['POST'])
+@login_required
+@role_required('AdministradorLegajos')
+def toggle_candado_historico(id_planilla):
+    datos = request.get_json() or {}
+    token_ingresado = datos.get('token_seguridad', '').strip()
+
+    try:
+        conexion = get_db_write()
+        cursor = conexion.cursor()
+        
+        # 1. Verificamos el estado actual de la planilla histórica
+        cursor.execute("SELECT ISNULL(bloqueado, 0) FROM Planillas_Historicas WHERE id_planilla_historica = ?", (id_planilla,))
+        row_planilla = cursor.fetchone()
+        
+        if not row_planilla:
+            return jsonify({"estado": "error", "mensaje": "La planilla no existe."}), 404
+            
+        estado_actual = row_planilla[0]
+
+        # 2. LÓGICA DE PROTECCIÓN (SI LA QUIEREN ABRIR)
+        if estado_actual == 1:
+            
+            # 🚀 SOLUCIÓN DEFINITIVA: Usamos tu propia función del repositorio de RRHH
+            from app.infrastructure.persistence.planilla_repository import PlanillaRepository
+            repo = PlanillaRepository()
+            
+            clave_real = repo.obtener_clave_dinamica()
+            
+            if not clave_real:
+                return jsonify({"estado": "error", "mensaje": "Error: No se encontró una clave de seguridad activa en el sistema."}), 403
+
+            # 🛡️ VALIDACIÓN ESTRICTA
+            if token_ingresado.upper() != clave_real.upper():
+                return jsonify({
+                    "estado": "error", 
+                    "mensaje": "CLAVE INCORRECTA. El código ingresado no coincide con la seguridad del sistema."
+                }), 403
+            
+            nuevo_estado = 0
+            mensaje_final = "Planilla histórica desbloqueada correctamente."
+
+        # 3. SI ESTÁ ABIERTA Y LA QUIEREN CERRAR (Directo, sin clave)
+        else:
+            nuevo_estado = 1
+            mensaje_final = "Planilla cerrada y protegida."
+
+        # 4. EJECUTAMOS EL CAMBIO EN LA BASE DE DATOS
+        sql_update = "UPDATE Planillas_Historicas SET bloqueado = ? WHERE id_planilla_historica = ?"
+        cursor.execute(sql_update, (nuevo_estado, id_planilla))
+        conexion.commit()
+        cursor.close()
+        
+        return jsonify({"estado": "ok", "mensaje": mensaje_final})
+        
+    except Exception as e:
+        current_app.logger.error(f"🔥 Error en seguridad de planilla histórica: {str(e)}")
+        return jsonify({"estado": "error", "mensaje": f"Fallo técnico: {str(e)}"}), 500
+
+@legajo_bp.route('/revertir-historico/<int:id_personal>', methods=['POST'])
+@login_required
+@role_required('AdministradorLegajos')
+def revertir_personal_historico(id_personal):
+    try:
+        conexion = get_db_write()
+        cursor = conexion.cursor()
+        sql = "UPDATE personal SET tipo_registro = 2 WHERE id_personal = ?"
+        cursor.execute(sql, (id_personal,))
+        if cursor.rowcount > 0:
+            conexion.commit()
+            flash('Trabajador retirado de la lista histórica exitosamente.', 'success')
+        else:
+            flash('No se pudo encontrar al trabajador para actualizarlo.', 'warning')
+        cursor.close()
+    except Exception as e:
+        flash(f'Error al procesar la reversión: {str(e)}', 'danger')
+    return redirect(url_for('legajo.listar_personal_historico'))
+
+
+# 8. OBTENER DETALLE DE UNA SOLA PLANILLA (PARA EDITAR)
+@legajo_bp.route('/obtener_detalle_planilla_historica/<int:id_planilla>', methods=['GET'])
+@login_required
+@role_required('AdministradorLegajos')
+def obtener_detalle_planilla_historica(id_planilla):
+    try:
+        conexion = get_db_read()
+        cursor = conexion.cursor()
+        
+        # 🚀 1. Traer Cabecera con TODOS los datos nuevos
+        sql_cabecera = """
+            SELECT anio, mes, tipo_moneda, ruta_archivo,
+                   cargo_historico, unidad_historica, nivel_historico, regimen_historico,
+                   condicion_historica, pension_historica, dias_laborados, faltas, observaciones
+            FROM Planillas_Historicas 
+            WHERE id_planilla_historica = ?
+        """
+        cursor.execute(sql_cabecera, (id_planilla,))
+        c = cursor.fetchone()
+        
+        if not c:
+            return jsonify({"estado": "error", "mensaje": "Planilla no encontrada"}), 404
+            
+        # 2. Traer Conceptos
+        sql_conceptos = "SELECT tipo_concepto, descripcion_concepto, monto FROM Planillas_Historicas_Conceptos WHERE id_planilla_historica = ?"
+        cursor.execute(sql_conceptos, (id_planilla,))
+        conceptos = [{"tipo": x[0], "descripcion": x[1], "monto": float(x[2])} for x in cursor.fetchall()]
+        cursor.close()
+        
+        return jsonify({
+            "estado": "ok",
+            "cabecera": {
+                "anio": c[0], "mes": c[1], "moneda": c[2], "es_archivo": True if c[3] else False,
+                "cargo": c[4], "unidad": c[5], "nivel": c[6], "regimen": c[7],
+                "condicion": c[8], "pension": c[9], "dias_laborados": c[10], "faltas": c[11], "observaciones": c[12]
+            },
+            "conceptos": conceptos
+        })
+    except Exception as e:
+        return jsonify({"estado": "error", "mensaje": str(e)}), 500
+
+
+# 9. ACTUALIZAR PLANILLA HISTÓRICA EXISTENTE (EDITAR)
+@legajo_bp.route('/actualizar_planilla_historica/<int:id_planilla>', methods=['PUT'])
+@login_required
+@role_required('AdministradorLegajos')
+def actualizar_planilla_historica(id_planilla):
+    datos = request.get_json()
+    if not datos: return jsonify({"estado": "error", "mensaje": "No se recibieron datos para actualizar."}), 400
+
+    conexion = None
+    try:
+        conexion = get_db_write()
+        cursor = conexion.cursor()
+        
+        cursor.execute("SELECT bloqueado FROM Planillas_Historicas WHERE id_planilla_historica = ?", (id_planilla,))
+        row = cursor.fetchone()
+        if row and row[0]: return jsonify({"estado": "error", "mensaje": "Planilla bloqueada."}), 403
+
+        # 🚀 1. Actualizamos la Cabecera con datos nuevos
+        sql_update_cabecera = """
+            UPDATE Planillas_Historicas 
+            SET anio = ?, mes = ?, tipo_moneda = ?, total_ingresos = ?, total_descuentos = ?, monto_neto = ?,
+                cargo_historico = ?, unidad_historica = ?, nivel_historico = ?, regimen_historico = ?,
+                condicion_historica = ?, pension_historica = ?, dias_laborados = ?, faltas = ?, observaciones = ?,
+                ruta_generado = NULL
+            WHERE id_planilla_historica = ?
+        """
+        cursor.execute(sql_update_cabecera, (
+            datos['anio'], datos['mes'], datos['moneda'], datos['total_ingresos'], datos['total_descuentos'], datos['monto_neto'],
+            datos.get('cargo'), datos.get('unidad'), datos.get('nivel'), datos.get('regimen'),
+            datos.get('condicion'), datos.get('pension'), datos.get('dias_laborados', 30), datos.get('faltas', 0), datos.get('observaciones'),
+            id_planilla
+        ))
+        
+        # 2. Reemplazo de Conceptos
+        cursor.execute("DELETE FROM Planillas_Historicas_Conceptos WHERE id_planilla_historica = ?", (id_planilla,))
+        sql_insert_conceptos = "INSERT INTO Planillas_Historicas_Conceptos (id_planilla_historica, tipo_concepto, descripcion_concepto, monto) VALUES (?, ?, ?, ?)"
+        
+        for c in datos.get('conceptos', []):
+            cursor.execute(sql_insert_conceptos, (id_planilla, c['tipo'], c['descripcion'], float(c.get('monto') or 0)))
+            
+        conexion.commit()
+        return jsonify({"estado": "ok", "mensaje": "Cambios guardados."})
+    except Exception as e:
+        if conexion: conexion.rollback()
+        return jsonify({"estado": "error", "mensaje": f"Falla al actualizar: {str(e)}"}), 500
+    finally:
+        if conexion:
+            cursor.close()
+            conexion.close()
+
+
+# 10. GENERAR RECONSTRUCCIÓN DIGITAL (El PDF Moderno)
+from flask import Response, current_app, render_template, request, jsonify
+from io import BytesIO
+from xhtml2pdf import pisa
+import base64
+import os
+import traceback
+from datetime import datetime
+
+@legajo_bp.route('/generar_pdf_historico/<int:id_planilla>', methods=['GET', 'POST']) # 🚀 CAMBIO: Acepta ambos
+@login_required
+@role_required('AdministradorLegajos', 'Sistemas')
+def generar_pdf_historico(id_planilla):
+    conn_r = None
+    conn_w = None
+    try:
+        conn_r = get_db_read()
+        cursor_r = conn_r.cursor()
+        
+        # 1. OBTENER DATOS DE LA CABECERA
+        sql_cabecera = """
+            SELECT p.dni, p.nombres, p.apellidos, 
+                   h.anio, h.mes, h.tipo_moneda, h.total_ingresos, h.total_descuentos, h.monto_neto,
+                   h.cargo_historico, h.unidad_historica, h.nivel_historico, h.regimen_historico,
+                   h.condicion_historica, h.pension_historica, h.dias_laborados, h.faltas, h.observaciones
+            FROM Planillas_Historicas h
+            INNER JOIN personal p ON h.id_personal = p.id_personal
+            WHERE h.id_planilla_historica = ?
+        """
+        cursor_r.execute(sql_cabecera, (id_planilla,))
+        row = cursor_r.fetchone()
+        if not row: 
+            return jsonify({"estado": "error", "mensaje": "Planilla no encontrada"}), 404
+            
+        dni, nom, ape, anio, mes, moneda, t_ing, t_desc, neto, cargo, unidad, nivel, regimen, condicion, pension, dias, faltas, obs = row
+
+        # 2. OBTENER CONCEPTOS
+        cursor_r.execute("SELECT tipo_concepto, descripcion_concepto, monto FROM Planillas_Historicas_Conceptos WHERE id_planilla_historica = ?", (id_planilla,))
+        filas_conceptos = cursor_r.fetchall()
+        
+        ingresos_list = [{"descripcion": c[1], "monto": float(c[2] or 0)} for c in filas_conceptos if c[0] == 'INGRESO']
+        descuentos_list = [{"descripcion": c[1], "monto": float(c[2] or 0)} for c in filas_conceptos if c[0] == 'DESCUENTO']
+        aportes_list = [{"descripcion": c[1], "monto": float(c[2] or 0)} for c in filas_conceptos if c[0] == 'APORTE']
+        excep_list = [{"descripcion": c[1], "monto": float(c[2] or 0)} for c in filas_conceptos if c[0] == 'EXCEPCIONAL']
+        
+        t_aportes = sum(item['monto'] for item in aportes_list)
+        t_excep = sum(item['monto'] for item in excep_list)
+        cursor_r.close()
+        conn_r.close()
+
+        # 3. PREPARAR LOGO
+        ruta_logo = os.path.join(current_app.root_path, 'presentation', 'static', 'img', 'muni_logo.png')
+        logo_b64 = ""
+        if os.path.exists(ruta_logo):
+            with open(ruta_logo, "rb") as f: 
+                logo_b64 = "data:image/png;base64," + base64.b64encode(f.read()).decode('utf-8')
+
+        simbolo = "S/." if moneda in ["Soles", "Nuevos Soles", "Soles de Oro"] else "I/."
+
+        # 4. RENDERIZAR HTML PARA PDF
+        html_pdf = render_template('admin/boleta_historica_pdf.html',
+            d={
+                'nombre_completo': f"{ape}, {nom}", 
+                'dni_trabajador': dni, 
+                'cargo_actual': cargo or '---', 
+                'oficina_nombre': unidad or '---', 
+                'nivel_remunerativo': nivel or '---',
+                'fecha_ingreso_fmt': '---', 
+                'sistema_pensionario': pension or '---', 
+                'nocuenta': '---', 
+                'condicion_laboral': condicion or '---', 
+                'mes': str(mes).upper(), 
+                'anio': anio, 
+                'regimen_laboral': regimen or '---',
+                'dias_laborados': dias if dias is not None else 30,
+                'faltas': faltas if faltas is not None else 0,
+                'observaciones': obs or ''
+            },
+            ingresos=ingresos_list, descuentos=descuentos_list, aportes=aportes_list, excepcionales=excep_list,
+            t_ing=float(t_ing or 0), t_desc=float(t_desc or 0), t_aportes=t_aportes, t_excep=t_excep,
+            neto=float(neto or 0), simbolo=simbolo, logo_path=logo_b64, 
+            fecha_hoy=datetime.now().strftime("%d/%m/%Y")
+        )
+
+        # 5. GENERAR PDF
+        pdf_buffer = BytesIO()
+        pisa_status = pisa.CreatePDF(src=html_pdf, dest=pdf_buffer)
+        if pisa_status.err: return jsonify({"estado": "error"}), 500
+        pdf_content = pdf_buffer.getvalue()
+
+        # 6. GUARDAR COPIA FÍSICA (Necesario para el servidor)
+        nombre_archivo = f"HISTORICO_{dni}_{anio}_{mes}.pdf"
+        folder = os.path.join(current_app.root_path, 'presentation', 'static', 'uploads', 'historicos')
+        os.makedirs(folder, exist_ok=True)
+        ruta_fisica = os.path.join(folder, nombre_archivo)
+        with open(ruta_fisica, 'wb') as f: f.write(pdf_content)
+
+        # ACTUALIZAR RUTA EN BD
+        conn_w = get_db_write()
+        cursor_w = conn_w.cursor()
+        cursor_w.execute("UPDATE Planillas_Historicas SET ruta_generado = ? WHERE id_planilla_historica = ?", 
+                         (f"uploads/historicos/{nombre_archivo}", id_planilla))
+        conn_w.commit()
+        cursor_w.close()
+        conn_w.close()
+
+        # 🚀 7. LÓGICA DE RESPUESTA INTELIGENTE
+        if request.method == 'POST':
+            # Si es POST (desde el botón Guardar/Digitalizar), respondemos OK para que el spinner pare.
+            return jsonify({"estado": "ok"})
+        else:
+            # Si es GET (desde el botón Extraer Copia), enviamos el archivo PDF a la pantalla.
+            from flask import Response
+            return Response(
+                pdf_content,
+                mimetype='application/pdf',
+                headers={"Content-Disposition": f"inline; filename={nombre_archivo}"}
+            )
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"estado": "error", "mensaje": str(e)}), 500
+
+
+# Asegúrate de importar el repositorio si no lo está:
+from app.infrastructure.persistence.planilla_repository import PlanillaRepository
+# (Asumo que ya tienes 'current_user' importado arriba: from flask_login import current_user)
+
+@legajo_bp.route('/configuracion/catalogo-presupuestal', methods=['GET', 'POST'])
+@login_required
+@role_required('AdministradorLegajos', 'AdministradorEscalafon', 'Sistemas') 
+def catalogo_presupuestal():
+    repo = PlanillaRepository()
+    
+    if request.method == 'POST':
+        # Capturamos los datos que manda el HTML
+        nueva_config = {
+            'np': request.form.get('np_codigo'),
+            'actividad': request.form.get('actividad_nombre'),
+            'meta': request.form.get('meta_codigo'),
+            'anio': 2026 # Podrías sacarlo de un input también
+        }
+        
+        # 🔥 EL CAMBIO CRÍTICO ESTÁ AQUÍ: Pasamos current_user.username para el Log de Auditoría
+        if repo.guardar_presupuesto_config(nueva_config, current_user.username):
+            flash("✅ Configuración añadida al catálogo exitosamente.", "success")
+        else:
+            flash("❌ Hubo un error al intentar guardar la configuración.", "danger")
+            
+        return redirect(url_for('legajo.catalogo_presupuestal'))
+
+    # Si es GET (solo entrar a ver), listamos los datos
+    configs = repo.obtener_presupuesto_configs()
+    return render_template('admin/config_presupuesto.html', configs=configs)
+
+# --- Ruta para el botón Eliminar ---
+@legajo_bp.route('/configuracion/catalogo-presupuestal/eliminar/<int:id_config>', methods=['POST'])
+@login_required
+@role_required('AdministradorLegajos', 'AdministradorEscalafon', 'Sistemas') 
+def eliminar_catalogo_presupuestal(id_config):
+    repo = PlanillaRepository()
+    
+    # 🔥 Le pasamos current_user.username a la función para la auditoría
+    resultado = repo.eliminar_presupuesto_config(id_config, current_user.username)
+    
+    flash(resultado['mensaje'], resultado['estado'])
+    return redirect(url_for('legajo.catalogo_presupuestal'))

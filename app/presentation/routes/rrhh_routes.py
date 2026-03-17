@@ -436,7 +436,7 @@ def editar_ficha_individual(id_detalle):
             # Convertimos el formulario (request.form) a un diccionario para reusar tu función del repo
             data = request.form.to_dict()
             
-            # La función del repo espera los datos limpios, nos aseguramos de pasarlos
+            # La función del repo ahora procesará también el 'id_config' que viene del select
             repo.actualizar_montos_detalle(id_detalle, data)
             
             flash('✅ Ficha actualizada correctamente.', 'success')
@@ -446,6 +446,7 @@ def editar_ficha_individual(id_detalle):
             return redirect(url_for('rrhh.editar_planilla_grilla', id_planilla=detalle['id_planilla']))
             
         except Exception as e:
+            current_app.logger.error(f"Error al guardar ficha {id_detalle}: {str(e)}")
             flash(f'Error al guardar: {str(e)}', 'danger')
             return redirect(url_for('rrhh.editar_ficha_individual', id_detalle=id_detalle))
 
@@ -455,15 +456,20 @@ def editar_ficha_individual(id_detalle):
         flash('Trabajador no encontrado en esta planilla.', 'warning')
         return redirect(url_for('rrhh.gestionar_planillas'))
         
-    # 🔥 NUEVO: Traemos los catálogos y los conceptos dinámicos
+    # Traemos los catálogos de conceptos (Bonos/Descuentos)
     catalogos = repo.obtener_catalogo_conceptos()
     conceptos_trabajador = repo.obtener_conceptos_trabajador(id_detalle)
+
+    # 🚀 CORRECCIÓN VITAL: Traemos el catálogo de Presupuesto (S10/SIAF)
+    # Sin esta línea, el menú desplegable de "Actividad" sale vacío.
+    catalogo_presupuestal = repo.obtener_presupuesto_configs()
         
     # Pasamos todo al HTML
     return render_template('rrhh/editar_ficha.html', 
                            d=detalle,
                            catalogos=catalogos,
-                           conceptos_trabajador=conceptos_trabajador)
+                           conceptos_trabajador=conceptos_trabajador,
+                           catalogo_s10=catalogo_presupuestal) # <-- Se envía al HTML aquí
 
 
 @rrhh_bp.route('/planillas/eliminar/<int:id_planilla>', methods=['POST'])
@@ -1025,3 +1031,240 @@ def generar_reporte_anual(id_personal, anio):
         return redirect(request.referrer or url_for('rrhh.listar_personal'))
     finally:
         conn.close()
+
+
+@rrhh_bp.route('/planillas/<int:id_planilla>/importar-excel', methods=['POST'])
+@login_required
+@role_required('AdministradorLegajos', 'AdministradorEscalafon', 'Sistemas', 'RRHH')
+def importar_excel_planilla(id_planilla):
+    import pandas as pd
+    from app.infrastructure.persistence.planilla_repository import PlanillaRepository
+    from markupsafe import Markup
+    
+    if 'archivo_excel' not in request.files:
+        flash("No se encontró el archivo Excel.", "warning")
+        return redirect(url_for('rrhh.editar_planilla_grilla', id_planilla=id_planilla))
+
+    file = request.files['archivo_excel']
+    if file.filename == '':
+        flash("No seleccionó ningún archivo.", "warning")
+        return redirect(url_for('rrhh.editar_planilla_grilla', id_planilla=id_planilla))
+
+    filtro_condicion = request.form.get('filtro_condicion', 'TODOS').upper()
+    filtro_periodo = request.form.get('filtro_periodo', '').strip()
+
+    try:
+        # 1. Leemos el Excel gigante
+        df = pd.read_excel(file)
+        
+        # Limpiamos los nombres de las columnas
+        df.columns = [str(c).strip().upper() for c in df.columns]
+
+        # 2. 🔥 FILTRO POR PERIODO
+        if filtro_periodo:
+            if 'PERIODO' in df.columns:
+                df['PERIODO'] = df['PERIODO'].fillna('').astype(str).str.replace('.0', '', regex=False).str.strip()
+                df = df[df['PERIODO'] == filtro_periodo]
+            else:
+                flash("❌ El Excel no tiene la columna 'PERIODO'. Asegúrese de usar el formato correcto.", "danger")
+                return redirect(url_for('rrhh.editar_planilla_grilla', id_planilla=id_planilla))
+
+        # 3. 🔥 FILTRO POR CONDICIÓN LABORAL
+        if filtro_condicion != 'TODOS':
+            if 'CONDICION' in df.columns:
+                df['CONDICION'] = df['CONDICION'].fillna('').astype(str).str.upper()
+                df = df[df['CONDICION'].str.contains(filtro_condicion)]
+            else:
+                flash("❌ El Excel no tiene la columna 'CONDICION'.", "danger")
+                return redirect(url_for('rrhh.editar_planilla_grilla', id_planilla=id_planilla))
+
+        if df.empty:
+            flash(Markup(f"❌ No se encontraron trabajadores con Periodo: <b>{filtro_periodo}</b> y Condición: <b>{filtro_condicion}</b>."), "warning")
+            return redirect(url_for('rrhh.editar_planilla_grilla', id_planilla=id_planilla))
+
+        # =========================================================================
+        # 🔥 EL "CEREBRO": RECÁLCULO DINÁMICO, APLICACIÓN DE LEY Y DETECTIVE SCTR
+        # =========================================================================
+        try:
+            # A. Detectamos rangos de Ingresos y Descuentos
+            idx_basica = df.columns.get_loc('BASICA')
+            idx_totalbru = df.columns.get_loc('TOTALBRU')
+            ing_presentes = df.columns[idx_basica : idx_totalbru]
+            
+            idx_dcafae = df.columns.get_loc('DCAFAE')
+            idx_tdescuen = df.columns.get_loc('TDESCUEN')
+            desc_presentes = df.columns[idx_dcafae : idx_tdescuen]
+
+            # Limpiamos nulos
+            for col in list(ing_presentes) + list(desc_presentes):
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+
+            # 🕵️‍♂️ PASO CLAVE PARA EL DETECTIVE: Guardamos el Total Bruto viejo del Excel
+            # Reemplazamos 0 por 1 para evitar errores matemáticos de división entre cero
+            df['TOTALBRU_VIEJO'] = pd.to_numeric(df['TOTALBRU'], errors='coerce').replace(0, 1).fillna(1)
+
+            # B. Calculamos el Total Bruto REAL sumando los ingresos
+            df['TOTALBRU'] = df[ing_presentes].sum(axis=1)
+
+            # C. BLINDAJE DE ESSALUD (9% del Total Bruto Real)
+            if 'RPS' in df.columns:
+                df['RPS'] = (df['TOTALBRU'] * 0.09).round(2)
+
+            # D. 🔥 NUEVO: DETECTIVE DE SCTR SALUD
+            if 'SCTR' in df.columns:
+                df['SCTR'] = pd.to_numeric(df['SCTR'], errors='coerce').fillna(0)
+                tiene_sctr = df['SCTR'] > 0
+                
+                # Descubrimos la tasa: (Monto viejo del Excel / Total Bruto viejo del Excel)
+                # Ej: 2.65 / 3180.50 = 0.00083... redondeado a 4 decimales = 0.0009
+                tasa_descubierta = (df.loc[tiene_sctr, 'SCTR'] / df.loc[tiene_sctr, 'TOTALBRU_VIEJO']).round(4)
+                
+                # Aplicamos la tasa descubierta al Total Bruto REAL (Ej: 3102.50 * 0.0009 = 2.79)
+                df.loc[tiene_sctr, 'SCTR'] = (df.loc[tiene_sctr, 'TOTALBRU'] * tasa_descubierta).round(2)
+
+            # E. BLINDAJE DE PENSIONES
+            tasas_pension = {
+                'ONP': 0.1300,
+                'HABITAT': 0.1247,
+                'INTEGRA': 0.1244,
+                'PROFUTURO': 0.1259,
+                'PRIMA': 0.1248
+            }
+            columnas_pension = {
+                'ONP': 'DONP', 'HABITAT': 'DHABITAT', 'INTEGRA': 'DINTEGRA', 
+                'PROFUTURO': 'DPROFU', 'PRIMA': 'DPRIMA'
+            }
+
+            if 'REGPENS' in df.columns:
+                # Ponemos en 0 todas las columnas de pensión primero
+                for col in columnas_pension.values():
+                    if col in df.columns:
+                        df[col] = 0.00
+
+                # Calculamos la pensión correcta
+                for index, row in df.iterrows():
+                    regimen = str(row['REGPENS']).strip().upper()
+                    if regimen in tasas_pension and columnas_pension[regimen] in df.columns:
+                        tasa = tasas_pension[regimen]
+                        columna_destino = columnas_pension[regimen]
+                        df.at[index, columna_destino] = round(row['TOTALBRU'] * tasa, 2)
+
+            # F. Recalculamos el Total de Descuentos
+            df['TDESCUEN'] = df[desc_presentes].sum(axis=1)
+
+            # G. Calculamos el Neto real y evitamos que sea negativo
+            df['NCOBRAR'] = df['TOTALBRU'] - df['TDESCUEN']
+            df['NCOBRAR'] = df['NCOBRAR'].clip(lower=0)
+            
+        except KeyError as e:
+            flash(f"❌ Error en la estructura del Excel. Falta la columna clave: {str(e)}", "danger")
+            return redirect(url_for('rrhh.editar_planilla_grilla', id_planilla=id_planilla))
+
+        # =========================================================================
+        # 🔥 FIN DEL RECÁLCULO DINÁMICO
+        # =========================================================================
+
+        # 4. Enviamos el Excel filtrado y RECALCULADO a tu función del Repositorio
+        repo = PlanillaRepository()
+        
+        if repo.procesar_carga_masiva_completa(id_planilla, df):
+            flash(f"✅ ¡Éxito! Se procesaron {len(df)} trabajadores con montos validados.", "success")
+        else:
+            flash("❌ Hubo un error interno al guardar los datos en la base de datos.", "danger")
+
+    except ValueError as ve:
+        flash(Markup(str(ve)), "danger")
+        
+    except Exception as e:
+        flash(f"❌ Error al procesar el archivo: {str(e)}", "danger")
+
+    return redirect(url_for('rrhh.editar_planilla_grilla', id_planilla=id_planilla))
+
+@rrhh_bp.route('/planillas/descargar-plantilla')
+@login_required
+@role_required('RRHH', 'AdministradorLegajos', 'AdministradorEscalafon', 'Sistemas')
+def descargar_plantilla_excel():
+    import pandas as pd
+    from io import BytesIO
+    from flask import send_file
+    from openpyxl.worksheet.table import Table, TableStyleInfo
+    from openpyxl.utils import get_column_letter
+    from openpyxl.worksheet.datavalidation import DataValidation # 🔥 Para las listas desplegables
+
+    # 1. Definición de Columnas
+    columnas = [
+        "PERIODO", "NP", "ACTIVIDAD", "META", "NUM", "PATERNO", "MATERNO", "NOMBRES",
+        "DNI", "FNAC", "NCUENTA", "NCTACTS", "AUTOG", "REGPENS", "AFPCUPPS", "INGRAFP",
+        "CFOTOCHE", "SINDIC", "FINGR", "CONDICION", "NIVEL", "TIPOTRAB", "CARGO", "UBICACION",
+        "SCTR", "DIASCONT", "DIASTRAB", "FALTAS", "DIASSUBSI", "HORAS", "TARDANZAS",
+        "BASICA", "REUNIF", "TPH-COSVID", "PERSON", "FAMILI", "BONESP", "REFMOV", "BONODIF",
+        "DS276", "DU03794", "INCFONV", "D.L.26504", "DS 326-2025-EF", "INCAFP", "DL268-EF", "Encarg",
+        "TOTALBRU", "SUELDOBASE", "DCAFAE", "DONP", "DPROFU", "DHABITAT", "DINTEGRA", "DPRIMA",
+        "DESSAVI", "DQUINTACAT", "DJUDIC", "DSINDIC", "DAREQUIPA", "DA/SOLID", "DCENTROCOOP",
+        "DCOOPAC", "DLIMENTOS", "DSMILAGROS", "DMILPOCOOP", "DMAYNAS", "RIMAC", "DE-SIN",
+        "TDESCUEN", "RPS", "SCTR ONP", "CTS", "TOTALAPORT", "NCOBRAR"
+    ]
+
+    df = pd.DataFrame(columns=columnas)
+
+    # 2. Inyección de Fórmulas (Fila 2)
+    # TOTALBRU(AV): suma AF a AU
+    # DONP(AY): Si REGPENS(N) es ONP -> TOTALBRU * 0.13
+    # DPROFU(AZ): Si REGPENS(N) es PROFUTURO -> TOTALBRU * 0.1259
+    # DHABITAT(BA): Si REGPENS(N) es HABITAT -> TOTALBRU * 0.1247
+    # DINTEGRA(BB): Si REGPENS(N) es INTEGRA -> TOTALBRU * 0.1244
+    # DPRIMA(BC): Si REGPENS(N) es PRIMA -> TOTALBRU * 0.1248
+    # TDESCUEN(BR): suma AX a BQ
+    # NCOBRAR(BW): AV - BR
+    
+    df.loc[0] = {
+        "NP": "P - 1", "PATERNO": "PEREZ", "MATERNO": "GOMEZ", "NOMBRES": "JUAN", 
+        "DNI": "12345678", "CONDICION": "CAS", "REGPENS": "ONP", "SINDIC": "NO",
+        "BASICA": 1500.00, "DIASTRAB": 30, 
+        "TOTALBRU": "=SUM(AF2:AU2)",
+        "DONP": "=IF(N2=\"ONP\", AV2*0.13, 0)",
+        "DPROFU": "=IF(N2=\"PROFUTURO\", AV2*0.1259, 0)",
+        "DHABITAT": "=IF(N2=\"HABITAT\", AV2*0.1247, 0)",
+        "DINTEGRA": "=IF(N2=\"INTEGRA\", AV2*0.1244, 0)",
+        "DPRIMA": "=IF(N2=\"PRIMA\", AV2*0.1248, 0)",
+        "TDESCUEN": "=SUM(AX2:BQ2)",
+        "NCOBRAR": "=AV2-BR2"
+    }
+
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='Plantilla_Oficial')
+        workbook = writer.book
+        worksheet = writer.sheets['Plantilla_Oficial']
+
+        # 3. Listas Desplegables (Seleccionadores)
+        # Lista para Régimen Pensionario
+        dv_pension = DataValidation(type="list", formula1='"ONP,HABITAT,INTEGRA,PROFUTURO,PRIMA,SIN REGIMEN"', allow_blank=True)
+        worksheet.add_data_validation(dv_pension)
+        dv_pension.add("N2:N1000") # Columna REGPENS
+
+        # Lista para Sindicato
+        dv_sindic = DataValidation(type="list", formula1='"SI,NO"', allow_blank=True)
+        worksheet.add_data_validation(dv_sindic)
+        dv_sindic.add("R2:R1000") # Columna SINDIC
+
+        # 4. Formato de Tabla
+        letra_ultima_col = get_column_letter(len(columnas))
+        rango_tabla = f"A1:{letra_ultima_col}2" 
+        tabla = Table(displayName="TablaHMPP", ref=rango_tabla)
+        estilo = TableStyleInfo(name="TableStyleMedium9", showRowStripes=True)
+        tabla.tableStyleInfo = estilo
+        worksheet.add_table(tabla)
+
+        # 5. Estética de Columnas
+        column_widths = {'A': 12, 'F': 15, 'G': 15, 'H': 20, 'I': 12, 'N': 15, 'W': 30}
+        for col, width in column_widths.items():
+            worksheet.column_dimensions[col].width = width
+
+    output.seek(0)
+    return send_file(
+        output,
+        download_name="Plantilla_Inteligente_HMPP.xlsx",
+        as_attachment=True,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )

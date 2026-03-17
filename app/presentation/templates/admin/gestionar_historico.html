@@ -1,0 +1,282 @@
+{% extends 'layouts/dashboard.html' %}
+{% block title %}Gestionar Histórico - {{ persona.nombres }}{% endblock %}
+
+{% block dashboard_content %}
+
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+<div id="historico-config"
+     data-csrf="{{ csrf_token() }}"
+     data-url-guardar="{{ url_for('legajo.guardar_planilla_historica') }}"
+     data-url-subir="{{ url_for('legajo.subir_archivo_historico') }}"
+     data-url-obtener="{{ url_for('legajo.obtener_planillas_historicas', id_personal=persona.id_personal) }}"
+     data-url-eliminar="{{ url_for('legajo.eliminar_planilla_historica', id_planilla=0) }}"
+     data-url-candado="{{ url_for('legajo.toggle_candado_historico', id_planilla=0) }}"
+     data-url-generar-pdf="{{ url_for('legajo.generar_pdf_historico', id_planilla=0) }}" 
+     data-id-personal="{{ persona.id_personal }}"
+     style="display: none;">
+</div>
+
+<div class="d-flex justify-content-between align-items-center mb-4 p-4 bg-white rounded-4 shadow-sm border-0">
+    <div class="d-flex align-items-center">
+        <div class="bg-primary-subtle p-3 rounded-circle me-3 d-flex align-items-center justify-content-center" style="width: 60px; height: 60px;">
+            <i class="bi bi-file-earmark-spreadsheet text-primary fs-3"></i>
+        </div>
+        <div>
+            <h1 class="h4 mb-1 fw-bolder text-dark">Transcripción de Planillas Antiguas</h1>
+            <p class="text-muted mb-0 fs-6">
+                Trabajador: <strong class="text-dark">{{ persona.apellidos }}, {{ persona.nombres }}</strong> 
+                <span class="mx-2 text-light-subtle">|</span> 
+                DNI: <span class="badge bg-light text-dark border">{{ persona.dni }}</span>
+            </p>
+        </div>
+    </div>
+    <a href="{{ url_for('legajo.listar_personal_historico') }}" class="btn btn-light border shadow-sm rounded-pill px-4 py-2 fw-bold text-secondary">
+        <i class="bi bi-arrow-left me-2"></i> Volver al Listado
+    </a>
+</div>
+
+<div class="card shadow-sm border-0 rounded-4 mb-5 overflow-hidden">
+    <div class="card-header bg-white p-4 border-bottom d-flex justify-content-between align-items-center">
+        <h5 class="mb-0 fw-bold text-white">
+            <i class="bi bi-clock-history me-2 text-white"></i> Historial de Remuneraciones
+        </h5>
+        <button type="button" id="btnMostrarForm" class="btn btn-primary rounded-pill px-4 fw-bold shadow-sm">
+            <i class="bi bi-plus-lg me-1"></i> Nuevo Registro Mensual
+        </button>
+    </div>
+    
+    <div class="card-body bg-light p-0">
+        
+        <div id="metricas-generales" class="row g-3 pt-4 px-4 d-none">
+            <div class="col-md-3">
+                <div class="bg-white border rounded-3 p-3 text-center shadow-sm d-flex flex-column align-items-center justify-content-center h-100">
+                    <div class="text-primary mb-2"><i class="bi bi-file-earmark-text fs-3"></i></div>
+                    <h6 class="text-muted small fw-bold mb-1">TOTAL PLANILLAS</h6>
+                    <h3 class="fw-bolder text-dark mb-0" id="lbl_tot_planillas">0</h3>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="bg-white border rounded-3 p-3 text-center shadow-sm d-flex flex-column align-items-center justify-content-center h-100">
+                    <div class="text-info mb-2"><i class="bi bi-calendar-range fs-3"></i></div>
+                    <h6 class="text-muted small fw-bold mb-1">AÑOS REGISTRADOS</h6>
+                    <h3 class="fw-bolder text-dark mb-0" id="lbl_tot_anios">0</h3>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="bg-white border rounded-3 p-3 text-center shadow-sm border-bottom border-danger border-3 d-flex flex-column align-items-center justify-content-center h-100">
+                    <div class="text-danger mb-2"><i class="bi bi-lock-fill fs-3"></i></div>
+                    <h6 class="text-muted small fw-bold mb-1">CERRADAS (CANDADO)</h6>
+                    <h3 class="fw-bolder text-danger mb-0" id="lbl_tot_cerradas">0</h3>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="bg-white border rounded-3 p-3 text-center shadow-sm border-bottom border-warning border-3 d-flex flex-column align-items-center justify-content-center h-100">
+                    <div class="text-warning mb-2"><i class="bi bi-exclamation-triangle-fill fs-3"></i></div>
+                    <h6 class="text-muted small fw-bold mb-1">SIN SCAN ORIGINAL</h6>
+                    <h3 class="fw-bolder text-warning mb-0" id="lbl_tot_sinscan">0</h3>
+                </div>
+            </div>
+        </div>
+
+        <div id="resumen-totales" class="row g-3 my-3 px-4 d-none">
+            </div>
+
+        <div class="px-4 pb-4">
+            <div class="table-responsive rounded-4 border shadow-sm">
+                <table class="table table-hover align-middle bg-white mb-0">
+                    <thead class="table-light border-bottom">
+                        <tr>
+                            <th class="ps-4 text-muted small fw-bold">AÑO</th>
+                            <th class="text-muted small fw-bold">MES</th>
+                            <th class="text-center text-muted small fw-bold">MONEDA</th>
+                            <th class="text-center text-muted small fw-bold">EVIDENCIA (SCAN)</th>
+                            <th class="text-center text-muted small fw-bold">BOLETA DIGITAL</th>
+                            <th class="text-end text-muted small fw-bold">INGRESOS</th>
+                            <th class="text-end text-muted small fw-bold">DESCUENTOS</th>
+                            <th class="text-end text-muted small fw-bold">NETO PAGADO</th>
+                            <th class="text-center pe-4 text-muted small fw-bold">ACCIONES</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tablaPlanillasGuardadas">
+                        <tr><td colspan="9" class="text-center py-5"><div class="spinner-border text-primary me-2"></div><span class="text-muted fw-bold">Cargando registros...</span></td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="divFormularioHistorico" style="display: none;" class="bg-white border-top border-4 border-primary p-4 p-md-5">
+            
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h4 class="fw-bolder text-dark mb-0"><i class="bi bi-pencil-square me-2 text-primary"></i>Edición de Registro</h4>
+                <button type="button" class="btn-close btnOcultarForm" aria-label="Close"></button>
+            </div>
+
+            <div class="d-flex justify-content-center mb-5">
+                <div class="bg-light p-1 rounded-pill d-inline-flex border shadow-sm">
+                    <ul class="nav nav-pills" id="pills-tab" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active rounded-pill px-4 py-2 fw-bold" id="pills-manual-tab" data-bs-toggle="pill" data-bs-target="#pills-manual" type="button" role="tab">
+                                <i class="bi bi-keyboard me-2"></i> Digitar Planilla
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link rounded-pill px-4 py-2 fw-bold text-secondary" id="pills-archivo-tab" data-bs-toggle="pill" data-bs-target="#pills-archivo" type="button" role="tab">
+                                <i class="bi bi-cloud-arrow-up-fill me-2"></i> Subir Escaneo
+                            </button>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="tab-content" id="pills-tabContent">
+                <div class="tab-pane fade show active" id="pills-manual" role="tabpanel">
+                    
+                    <div class="bg-light rounded-4 p-4 border mb-4">
+                        <h6 class="text-uppercase text-muted small fw-bolder mb-3">Paso 1: Parámetros de la Planilla Histórica</h6>
+                        
+                        <div class="row g-4 align-items-end mb-4">
+                            <div class="col-md-6">
+                                <label class="form-label text-dark fw-semibold">Periodo a Registrar <span class="text-danger">*</span></label>
+                                <input type="month" id="ph_periodo" class="form-control form-control-lg shadow-sm border-primary" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label text-dark fw-semibold">Moneda Original <span class="text-danger">*</span></label>
+                                <select id="ph_moneda" class="form-select form-select-lg shadow-sm">
+                                    <option value="Soles">Soles (S/ - Actual)</option>
+                                    <option value="Nuevos Soles">Nuevos Soles (S/. - 1991 a 2015)</option>
+                                    <option value="Intis">Intis (I/. - 1985 a 1991)</option>
+                                    <option value="Soles de Oro">Soles de Oro (S/. - Antes de 1985)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <hr class="text-muted opacity-25">
+                        <h6 class="text-uppercase text-muted small fw-bolder mb-3 mt-4">Datos Laborales de la Época (Reconstrucción)</h6>
+                        
+                        <div class="row g-3 align-items-end">
+                            <div class="col-md-4">
+                                <label class="form-label text-dark fw-semibold small">Cargo / Puesto</label>
+                                <input type="text" id="ph_cargo" class="form-control shadow-sm" placeholder="Ej: Obrero, Asistente...">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label text-dark fw-semibold small">Unidad Administrativa</label>
+                                <input type="text" id="ph_unidad" class="form-control shadow-sm" placeholder="Ej: Limpieza, Escalafón...">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label text-dark fw-semibold small">Nivel Remunerativo</label>
+                                <input type="text" id="ph_nivel" class="form-control shadow-sm" placeholder="Ej: F-1, STA, SAB...">
+                            </div>
+                        </div>
+
+                        <div class="row g-3 align-items-end mt-2">
+                            <div class="col-md-4">
+                                <label class="form-label text-dark fw-semibold small">Régimen Laboral</label>
+                                <input type="text" id="ph_regimen" class="form-control shadow-sm" placeholder="Ej: D.L. 19990, D.L. 276...">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label text-dark fw-semibold small">Condición Laboral</label>
+                                <input type="text" id="ph_condicion" class="form-control shadow-sm" placeholder="Ej: Nombrado, Contratado...">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label text-dark fw-semibold small">Sistema Pensionario</label>
+                                <input type="text" id="ph_pension" class="form-control shadow-sm" placeholder="Ej: D.L. 19990, D.L. 20530...">
+                            </div>
+                        </div>
+
+                        <div class="row g-3 align-items-end mt-2">
+                            <div class="col-md-3">
+                                <label class="form-label text-dark fw-semibold small">Días Laborados</label>
+                                <div class="input-group shadow-sm">
+                                    <input type="number" id="ph_dias" class="form-control text-center fw-bold" value="30" min="0" max="31">
+                                    <span class="input-group-text bg-white text-muted">días</span>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label text-dark fw-semibold small">Faltas</label>
+                                <div class="input-group shadow-sm">
+                                    <input type="number" id="ph_faltas" class="form-control text-center fw-bold" value="0" min="0" max="31">
+                                    <span class="input-group-text bg-white text-muted">días</span>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label text-dark fw-semibold small">Observaciones (Opcional)</label>
+                                <input type="text" id="ph_observaciones" class="form-control shadow-sm" placeholder="Ej: Reintegro por R.A. N° 045-95...">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="d-flex justify-content-between align-items-center mb-3 mt-5">
+                        <h6 class="text-uppercase text-muted small fw-bolder mb-0">Paso 2: Detalle de Conceptos</h6>
+                        <button type="button" id="btnAgregarConcepto" class="btn btn-outline-primary btn-sm rounded-pill fw-bold px-3">
+                            <i class="bi bi-plus-lg me-1"></i> Fila Extra
+                        </button>
+                    </div>
+                    
+                    <div class="table-responsive rounded-4 border shadow-sm mb-4">
+                        <table class="table table-borderless align-middle mb-0">
+                            <thead class="table-light border-bottom">
+                                <tr>
+                                    <th style="width: 25%;" class="text-muted small">CLASIFICACIÓN</th>
+                                    <th style="width: 50%;" class="text-muted small">CONCEPTO IMPRESO EN BOLETA</th>
+                                    <th style="width: 20%;" class="text-end text-muted small">IMPORTE</th>
+                                    <th style="width: 5%;" class="text-center"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="tablaConceptosHistoricos"></tbody>
+                            <tfoot class="border-top bg-light">
+                                <tr>
+                                    <td colspan="2" class="text-end fw-bold text-success pt-3">TOTAL INGRESOS (+)</td>
+                                    <td colspan="2" class="fw-bolder fs-5 text-end text-success pt-3"><span id="ph_lbl_ingresos">0.00</span></td>
+                                </tr>
+                                <tr>
+                                    <td colspan="2" class="text-end fw-bold text-danger">TOTAL DESCUENTOS (-)</td>
+                                    <td colspan="2" class="fw-bolder fs-5 text-end text-danger"><span id="ph_lbl_descuentos">0.00</span></td>
+                                </tr>
+                                <tr class="border-top">
+                                    <td colspan="2" class="text-end fw-bolder text-primary fs-5 pb-3">NETO A PAGAR (=)</td>
+                                    <td colspan="2" class="fw-bolder fs-3 text-end text-primary pb-3"><span id="ph_lbl_neto">0.00</span></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+
+                    <div class="d-flex justify-content-end gap-2 mt-4">
+                        <button type="button" class="btn btn-light border rounded-pill px-4 fw-bold btnOcultarForm">Cancelar</button>
+                        <button type="button" id="btnGuardarPlanilla" class="btn btn-primary rounded-pill px-5 fw-bold shadow-sm">
+                            <i class="bi bi-check-circle-fill me-2"></i> Confirmar y Guardar
+                        </button>
+                    </div>
+                </div>
+
+                <div class="tab-pane fade" id="pills-archivo" role="tabpanel">
+                    <div class="row g-4 justify-content-center">
+                        <div class="col-md-8 text-center">
+                            <div class="mb-4 text-start">
+                                <label class="form-label text-dark fw-semibold">Mes y Año del Documento</label>
+                                <input type="month" id="file_periodo" class="form-control form-control-lg shadow-sm" required>
+                            </div>
+                            <div class="border border-2 border-dashed border-primary bg-primary-subtle rounded-4 p-5 text-center mb-4">
+                                <i class="bi bi-cloud-arrow-up-fill text-primary display-3 mb-3"></i>
+                                <h5 class="fw-bold text-dark">Subir Documento Escaneado</h5>
+                                <input class="form-control form-control-lg shadow-sm" type="file" id="file_documento" accept=".pdf, .xls, .xlsx, .jpg, .png">
+                            </div>
+                            <div class="d-flex justify-content-center gap-2 mt-2">
+                                <button type="button" class="btn btn-light border rounded-pill px-4 fw-bold btnOcultarForm">Cancelar</button>
+                                <button type="button" id="btnSubirArchivo" class="btn btn-success rounded-pill px-5 fw-bold shadow-sm">
+                                    <i class="bi bi-upload me-2"></i> Iniciar Subida
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/historico.js') }}?v=8.5"></script>
+{% endblock %}

@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', function() {
-    console.log("✅ Calculadora de Ficha Municipal ACTIVADA (Días Reales + Desglose JSON + Aguinaldos Dinámicos)");
+    console.log("✅ Calculadora de Ficha Municipal ACTIVADA (Base 30 + Configuración de Afectación de Bonos)");
 
     // =========================================================
     // 1. TASAS DE PENSIONES
@@ -15,20 +15,30 @@ document.addEventListener('DOMContentLoaded', function() {
     };
 
     // =========================================================
-    // 2. DETECTAR DÍAS REALES DEL MES
+    // 2. DETECTAR DÍAS REALES Y CONFIGURAR BASE
     // =========================================================
     const mes = parseInt(document.getElementById('mes_planilla')?.value) || 0;
     const anio = parseInt(document.getElementById('anio_planilla')?.value) || 0;
     
     function obtenerDiasDelMes(m, a) {
         if (m > 0 && a > 0) return new Date(a, m, 0).getDate();
-        return 30; // Fallback solo si no hay fecha
+        return 30; // Fallback
     }
 
     const diasTotalesMes = obtenerDiasDelMes(mes, anio);
-    console.log(`📅 Mes detectado: ${mes}/${anio}. Días para cálculo: ${diasTotalesMes}`);
+    
+    // 🔥 CONFIGURACIÓN DE BASE DE CÁLCULO
+    const baseCalculo = 30; // Siempre 30 para matemática interna
+    // const baseCalculo = diasTotalesMes; // Comenta la de arriba y descomenta esta para Días Reales
 
-    // --- ACTUALIZACIÓN DE ELEMENTOS ---
+    // 🔥 CONFIGURACIÓN DE AFECTACIÓN: ¿La falta descuenta también de bonos y movilidad?
+    // false = Solo descuenta del Sueldo Básico.
+    // true  = Descuenta de (Sueldo + Bonos + Movilidad).
+    const DESCUENTO_AFECTA_BONOS = false; 
+
+    console.log(`📅 Mes: ${mes}/${anio}. Días Reales: ${diasTotalesMes}. Base Faltas: ${baseCalculo}. ¿Afecta bonos?: ${DESCUENTO_AFECTA_BONOS}`);
+
+    // --- ACTUALIZACIÓN DE ELEMENTOS VISUALES (SUNAT / Header) ---
     const headerDias = document.getElementById('lbl_dias_mes_sunat_header');
     if (headerDias) headerDias.innerText = diasTotalesMes;
 
@@ -58,13 +68,11 @@ document.addEventListener('DOMContentLoaded', function() {
     const txtTotalDesc = getEl('txt_total_descuentos'); 
     const txtNeto = getEl('txt_neto_cobrar'); 
 
-    // Elementos Especiales
     const elTasaSctr = getEl('input_tasa_sctr');
     const elSctrMonto = getEl('input_sctr');
     const chkSindicato = getEl('chk_sindicalizado');
     const inputSindicato = getEl('input_sindicato');
     
-    // Elementos para Días Computables
     const inputDiasFalta = document.querySelector('input[name="dias_falta"]');
     const inputDiasSubsidio = document.querySelector('input[name="dias_subsidiados"]');
     const inputDiasComputables = document.querySelector('input[name="dias_computables"]');
@@ -81,13 +89,15 @@ document.addEventListener('DOMContentLoaded', function() {
         const reintegros = getVal('input_reintegros');
         const bonos = getVal('input_bonos');
         
-        // Obtenemos los días 
         const diasFalta = inputDiasFalta ? (parseFloat(inputDiasFalta.value) || 0) : 0;
         const diasSubsidio = inputDiasSubsidio ? (parseFloat(inputDiasSubsidio.value) || 0) : 0;
 
         // 1. CÁLCULO DE DÍAS COMPUTABLES AUTOMÁTICO
         if (inputDiasComputables) {
-            let diasComputablesCalculados = diasTotalesMes - diasFalta - diasSubsidio;
+            // 🔥 Cálculo basado en baseCalculo (30)
+            let diasComputablesCalculados = baseCalculo - diasFalta - diasSubsidio;
+            // --- Comentado original: let diasComputablesCalculados = diasTotalesMes - diasFalta - diasSubsidio; ---
+            
             if (diasComputablesCalculados < 0) diasComputablesCalculados = 0; 
             inputDiasComputables.value = diasComputablesCalculados;
         }
@@ -95,7 +105,16 @@ document.addEventListener('DOMContentLoaded', function() {
         // 2. Calcular Descuento por Faltas (Dinero)
         let montoDescuentoFalta = 0;
         if (diasFalta > 0) {
-            montoDescuentoFalta = (sueldo / diasTotalesMes) * diasFalta;
+            // 🔥 Lógica de afectación de bonos
+            let baseMontoParaDescuento = sueldo;
+            if (DESCUENTO_AFECTA_BONOS) {
+                baseMontoParaDescuento = sueldo + bonos + viatico;
+            }
+
+            // 🔥 División por baseCalculo (30)
+            montoDescuentoFalta = (baseMontoParaDescuento / baseCalculo) * diasFalta;
+            
+            // --- Comentado original: montoDescuentoFalta = (sueldo / diasTotalesMes) * diasFalta; ---
         }
         if (elMontoFalta) elMontoFalta.value = montoDescuentoFalta.toFixed(2);
 
@@ -142,7 +161,6 @@ document.addEventListener('DOMContentLoaded', function() {
         let valJudicial = getVal('input_judiciales');
         let valOtros = getVal('input_otros');
         
-        // LÓGICA DE SINDICATO 
         let valSindicato = 0;
         if (chkSindicato && chkSindicato.checked) {
             valSindicato = getVal('input_sindicato');
@@ -173,7 +191,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             recalcularTodo(); 
         };
-
         chkSindicato.addEventListener('change', toggleSindicato);
         toggleSindicato();
     }
@@ -209,7 +226,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // =========================================================
-    // 6. MAGIA DINÁMICA: EMPAQUETADO DE DATOS (EL DESGLOSE)
+    // 6. MAGIA DINÁMICA: EMPAQUETADO DE DATOS (JSON)
     // =========================================================
     const btnAddIngreso = document.getElementById('btn-add-ingreso');
     const inputBonos = document.getElementById('input_bonos');
@@ -221,7 +238,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const glosaOtros = document.getElementById('glosa_otros');
     const templateDescuento = document.querySelector('#template-descuento-row tr');
 
-    // 🔥 NUEVOS ELEMENTOS PARA AGUINALDOS
     const btnAddAguinaldo = document.getElementById('btn-add-aguinaldo');
     const templateAguinaldo = document.querySelector('#template-aguinaldo-row tr');
 
@@ -241,7 +257,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // 🔥 EVENTO DE CLICK PARA AGREGAR FILA DE AGUINALDO
     if (btnAddAguinaldo && templateAguinaldo) {
         btnAddAguinaldo.addEventListener('click', function() {
             let newRow = templateAguinaldo.cloneNode(true);
@@ -250,7 +265,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // 🔥 ADJUNTAR EVENTOS A FILAS YA EXISTENTES (CARGADAS DESDE BD)
     document.querySelectorAll('.dinamico-row').forEach(row => attachEvents(row));
 
     function attachEvents(row) {
@@ -271,11 +285,9 @@ document.addEventListener('DOMContentLoaded', function() {
         let glosasAguinaldos = [];
         let arrayConceptos = []; 
 
-        // 6.1 BARRIDO DE INGRESOS
         document.querySelectorAll('.val-ingreso').forEach((inp, index) => {
             let select = document.querySelectorAll('.sel-concepto-ingreso')[index];
             let val = parseFloat(inp.value) || 0;
-            
             if (val > 0 && select.value !== '' && inp.closest('.dinamico-row').offsetParent !== null) {
                 totalIngresos += val;
                 let idConcepto = select.value;
@@ -284,15 +296,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 arrayConceptos.push({ id_concepto: parseInt(idConcepto), tipo: 'INGRESO', monto: val });
             }
         });
-        
         if(inputBonos) inputBonos.value = totalIngresos.toFixed(2);
         if(glosaBonos) glosaBonos.value = glosasIngresos.join(' + ');
 
-        // 6.2 BARRIDO DE DESCUENTOS
         document.querySelectorAll('.val-descuento').forEach((inp, index) => {
             let select = document.querySelectorAll('.sel-concepto-descuento')[index];
             let val = parseFloat(inp.value) || 0;
-            
             if (val > 0 && select.value !== '' && inp.closest('.dinamico-row').offsetParent !== null) {
                 totalDescuentos += val;
                 let idConcepto = select.value;
@@ -301,15 +310,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 arrayConceptos.push({ id_concepto: parseInt(idConcepto), tipo: 'DESCUENTO', monto: val });
             }
         });
-
         if(inputOtros) inputOtros.value = totalDescuentos.toFixed(2);
         if(glosaOtros) glosaOtros.value = glosasDescuentos.join(' + ');
 
-        // 🔥 6.3 BARRIDO DE AGUINALDOS (SUMA VISUAL Y JSON)
         document.querySelectorAll('.val-aguinaldo').forEach((inp, index) => {
             let select = document.querySelectorAll('.sel-concepto-aguinaldo')[index];
             let val = parseFloat(inp.value) || 0;
-            
             if (val > 0 && select.value !== '' && inp.closest('.dinamico-row').offsetParent !== null) {
                 totalAguinaldos += val;
                 let idConcepto = select.value;
@@ -319,22 +325,38 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
 
-        // 🔥 ACTUALIZAR CAMPOS DE RESUMEN DE AGUINALDO
         const inputAguiTotal = document.getElementById('input_aguinaldos_total');
         const glosaAgui = document.getElementById('glosa_aguinaldos');
         if(inputAguiTotal) inputAguiTotal.value = totalAguinaldos.toFixed(2);
         if(glosaAgui) glosaAgui.value = glosasAguinaldos.join(' + ');
 
-        // 6.4 EMPAQUETAR Y ACTUALIZAR
         const hiddenJsonInput = document.getElementById('json_conceptos');
-        if(hiddenJsonInput) {
-            hiddenJsonInput.value = JSON.stringify(arrayConceptos);
-        }
+        if(hiddenJsonInput) hiddenJsonInput.value = JSON.stringify(arrayConceptos);
 
         recalcularTodo(); 
     }
 
-    // Ejecución inicial
+    // =========================================================
+    // 7. AUTO-RELLENO SIAF/S10
+    // =========================================================
+    const selectActividad = document.getElementById('select_actividad');
+    const inputMeta = document.getElementById('input_meta');
+    const inputNp = document.getElementById('input_np');
+
+    if (selectActividad) {
+        selectActividad.addEventListener('change', function() {
+            const opcionSeleccionada = this.options[this.selectedIndex];
+            if (this.value === "") {
+                if (inputMeta) inputMeta.value = "";
+                if (inputNp) inputNp.value = "";
+                return;
+            }
+            if (inputMeta) inputMeta.value = opcionSeleccionada.getAttribute('data-meta') || '';
+            if (inputNp) inputNp.value = opcionSeleccionada.getAttribute('data-np') || '';
+        });
+        if (selectActividad.value !== "") selectActividad.dispatchEvent(new Event('change'));
+    }
+
     setTimeout(() => {
         recalcularDinamicos();
         recalcularTodo();

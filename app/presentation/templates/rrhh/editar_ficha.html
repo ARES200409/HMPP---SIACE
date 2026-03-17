@@ -100,11 +100,33 @@
                 </div>
 
                 <div class="row g-2 pt-3 border-top border-secondary border-opacity-25 px-3">
-                    <div class="col-md-3">
-                        <small class="text-muted text-uppercase fw-bold d-block" style="font-size: 0.65rem;">Actividad (Gestión)</small>
-                        <input type="text" name="actividad" class="form-control form-control-sm bg-white" value="{{ d.actividad or '' }}" placeholder="Ej. GESTIÓN MUNICIPAL-I">
+                    
+                    <div class="col-md-4">
+                        <small class="text-muted text-uppercase fw-bold d-block" style="font-size: 0.65rem;">Actividad (Gestión) SIAF/S10</small>
+                        <select class="form-select form-select-sm border-primary fw-bold text-dark bg-white" id="select_actividad" name="id_config">
+                            <option value="">-- Seleccione Actividad Oficial --</option>
+                            {% for c in catalogo_s10 %}
+                                <option value="{{ c.id_config }}" 
+                                        data-np="{{ c.np_codigo }}" 
+                                        data-meta="{{ c.meta_codigo }}"
+                                        {% if d.id_config == c.id_config %}selected{% endif %}>
+                                    {{ c.actividad_nombre }}
+                                </option>
+                            {% endfor %}
+                        </select>
                     </div>
-                    <div class="col-md-3">
+
+                    <div class="col-md-2">
+                        <small class="text-muted text-uppercase fw-bold d-block" style="font-size: 0.65rem;">Nota Planilla (NP)</small>
+                        <input type="text" class="form-control form-control-sm bg-light text-secondary fw-bold" id="input_np" value="" readonly tabindex="-1">
+                    </div>
+
+                    <div class="col-md-2">
+                        <small class="text-muted text-uppercase fw-bold d-block" style="font-size: 0.65rem;">Meta Presup.</small>
+                        <input type="text" name="meta" id="input_meta" class="form-control form-control-sm bg-light text-secondary fw-bold" value="{{ d.meta or '' }}" readonly tabindex="-1">
+                    </div>
+
+                    <div class="col-md-2">
                         <small class="text-muted text-uppercase fw-bold d-block" style="font-size: 0.65rem;">Condición Laboral</small>
                         <input type="text" name="condicion_laboral" class="form-control form-control-sm bg-white" value="{{ d.condicion_laboral or '' }}" placeholder="Ej. NOMBRADO">
                     </div>
@@ -112,20 +134,16 @@
                         <small class="text-muted text-uppercase fw-bold d-block" style="font-size: 0.65rem;">Tipo Trabajador</small>
                         <input type="text" name="tipo_trabajador" class="form-control form-control-sm bg-white" value="{{ d.tipo_trabajador or '' }}" placeholder="Ej. EMPLEADO">
                     </div>
+                </div>
+
+                <div class="row g-2 pt-2 px-3 pb-2">
                     <div class="col-md-4">
                         <small class="text-muted text-uppercase fw-bold d-block" style="font-size: 0.65rem;">Ubicación Física</small>
                         <input type="text" name="ubicacion" class="form-control form-control-sm bg-white" value="{{ d.ubicacion or '' }}" placeholder="Ej. ALCALDIA">
                     </div>
-                </div>
-
-                <div class="row g-2 pt-2 px-3 pb-2">
                     <div class="col-md-2">
                         <small class="text-muted text-uppercase fw-bold d-block" style="font-size: 0.65rem;">Nivel</small>
                         <input type="text" name="nivel" class="form-control form-control-sm fw-bold bg-white" value="{{ d.nivel or '' }}" placeholder="Ej. F-6">
-                    </div>
-                    <div class="col-md-2">
-                        <small class="text-muted text-uppercase fw-bold d-block" style="font-size: 0.65rem;">Meta Presup.</small>
-                        <input type="text" name="meta" class="form-control form-control-sm fw-bold bg-white" value="{{ d.meta or '' }}" placeholder="1.000110">
                     </div>
                     <div class="col-md-2">
                         <small class="text-muted text-uppercase fw-bold d-block" style="font-size: 0.65rem;">CUSPP (AFP)</small>
@@ -138,10 +156,6 @@
                     <div class="col-md-2">
                         <small class="text-muted text-uppercase fw-bold d-block" style="font-size: 0.65rem;">Cuenta CTS</small>
                         <input type="text" name="cuenta_cts" class="form-control form-control-sm bg-white" value="{{ d.cuenta_cts or '' }}">
-                    </div>
-                    <div class="col-md-2">
-                        <small class="text-muted text-uppercase fw-bold d-block" style="font-size: 0.65rem;">Fotocheck</small>
-                        <input type="text" name="fotocheck" class="form-control form-control-sm bg-white" value="{{ d.fotocheck or '' }}">
                     </div>
                 </div>
             </div>
@@ -660,4 +674,28 @@
 {% block scripts %}
 {{ super() }}
 <script src="{{ url_for('static', filename='js/ficha_calculadora.js') }}"></script>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    const selectActividad = document.getElementById('select_actividad');
+    const inputMeta = document.getElementById('input_meta');
+    const inputNp = document.getElementById('input_np');
+
+    if(selectActividad) {
+        selectActividad.addEventListener('change', function() {
+            const opt = this.options[this.selectedIndex];
+            if (this.value === "") {
+                if (inputMeta) inputMeta.value = "";
+                if (inputNp) inputNp.value = "";
+                return;
+            }
+            if (inputMeta) inputMeta.value = opt.getAttribute('data-meta') || '';
+            if (inputNp) inputNp.value = opt.getAttribute('data-np') || '';
+        });
+        if(selectActividad.value !== "") {
+            selectActividad.dispatchEvent(new Event('change'));
+        }
+    }
+});
+</script>
 {% endblock %}

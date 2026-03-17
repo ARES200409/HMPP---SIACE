@@ -1643,39 +1643,59 @@ class SqlServerPersonalRepository(IPersonalRepository):
 
     def get_personal_para_escalafon(self, page, per_page, dni=None, nombres=None):
         """
-        Versión final 100% sincronizada con el Trigger.
-        Lee el 'id_tipo_contrato' directamente de la tabla personal para mostrar
-        el estado actual real, ignorando fechas antiguas de contratos retroactivos.
+        Versión final HÍBRIDA (Moderno + Histórico).
+        Lee el 'id_tipo_contrato' directamente de la tabla personal.
+        Si el trabajador NO tiene sueldo/cargo moderno (cesado antiguo), 
+        busca inteligentemente en la bóveda de 'Planillas_Historicas'.
         """
         from app.database.connector import get_db_read
         conn = get_db_read()
         cursor = conn.cursor()
         offset = (page - 1) * per_page
         
-        # 🚀 SQL CORREGIDO:
-        # 1. El SUELDO se sigue sacando del contrato con fecha más reciente (correcto para pagos).
-        # 2. El NOMBRE DEL CONTRATO se saca directo de 'personal' (correcto para estatus actual).
+        # 🚀 SQL HÍBRIDO (El Cerebro del Récord Unificado)
         query = """
             SELECT 
                 p.id_personal, p.dni, p.nombres, p.apellidos, p.activo,
-                c.nombre_cargo, 
-                u.nombre AS nombre_unidad,
-                con.sueldo,
-                tc.nombre_tipo AS nombre_tipo_contrato, -- <--- ESTO AHORA ES CORRECTO
+                
+                -- CARGO: Si tiene contrato moderno usa ese, si no, usa el último histórico
+                COALESCE(c.nombre_cargo, ph.cargo_historico, 'No asignado') AS nombre_cargo, 
+                
+                -- UNIDAD: Misma lógica híbrida
+                COALESCE(u.nombre, ph.unidad_historica, 'Sin Unidad Asignada') AS nombre_unidad,
+                
+                -- SUELDO: Si hay contrato moderno lo usa, si no, usa el último neto histórico
+                COALESCE(con.sueldo, ph.monto_neto, 0.00) AS sueldo,
+                
+                -- CONTRATO: Muestra el actual o etiqueta como 'Histórico' si viene del pasado
+                COALESCE(tc.nombre_tipo, CASE WHEN ph.id_planilla_historica IS NOT NULL THEN 'HISTÓRICO' ELSE 'S/N' END) AS nombre_tipo_contrato,
+                
                 COUNT(*) OVER() as total_count
             FROM dbo.personal p
+            
+            -- JOINS MODERNOS (Lo de siempre)
             LEFT JOIN dbo.cargos c ON p.id_cargo = c.id_cargo
             LEFT JOIN dbo.unidad_administrativa u ON p.id_unidad = u.id_unidad 
-            
-            -- Mantenemos este JOIN solo para obtener el SUELDO más reciente por fecha
+            LEFT JOIN dbo.tipos_contrato tc ON p.id_tipo_contrato = tc.id_tipo_contrato
             LEFT JOIN dbo.contratos con ON con.id_contrato = (
                 SELECT MAX(id_contrato) FROM dbo.contratos 
                 WHERE id_personal = p.id_personal
             )
             
-            -- 🚀 EL CAMBIO CLAVE: Usamos p.id_tipo_contrato en lugar de con.id_tipo_contrato
-            -- Esto obedece al Trigger y muestra lo último que registraste, sin importar la fecha.
-            LEFT JOIN dbo.tipos_contrato tc ON p.id_tipo_contrato = tc.id_tipo_contrato
+            -- 🕰️ JOIN AL PASADO (La Bóveda Histórica)
+            -- Trae la planilla más reciente guardada en la bóveda de esta persona
+            LEFT JOIN dbo.Planillas_Historicas ph ON ph.id_planilla_historica = (
+                SELECT TOP 1 id_planilla_historica 
+                FROM dbo.Planillas_Historicas 
+                WHERE id_personal = p.id_personal 
+                ORDER BY anio DESC, 
+                         CASE mes 
+                            WHEN 'Diciembre' THEN 12 WHEN 'Noviembre' THEN 11 WHEN 'Octubre' THEN 10
+                            WHEN 'Septiembre' THEN 9 WHEN 'Agosto' THEN 8 WHEN 'Julio' THEN 7
+                            WHEN 'Junio' THEN 6 WHEN 'Mayo' THEN 5 WHEN 'Abril' THEN 4
+                            WHEN 'Marzo' THEN 3 WHEN 'Febrero' THEN 2 WHEN 'Enero' THEN 1
+                         END DESC
+            )
             WHERE 1=1
         """
         
@@ -1694,16 +1714,13 @@ class SqlServerPersonalRepository(IPersonalRepository):
             cursor.execute(query, params)
             columns = [column[0] for column in cursor.description]
             results = [dict(zip(columns, row)) for row in cursor.fetchall()]
-            # Manejo seguro en caso de que no haya resultados para evitar error de índice
             total = results[0]['total_count'] if results else 0
             return results, total
         except Exception as e:
-            print(f"DEBUG ERROR SQL FINAL: {str(e)}")
+            print(f"DEBUG ERROR SQL HÍBRIDO: {str(e)}")
             raise e
         finally:
             cursor.close()
-            
-        # app/infrastructure/persistence/sqlserver_repository.py
 
     def get_personal_by_id(self, id_personal):
         """

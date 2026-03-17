@@ -51,7 +51,7 @@
                         <thead class="table-light small fw-bold text-uppercase">
                             <tr>
                                 <th width="8%" class="ps-4">ID</th>
-                                <th width="18%">Periodo</th>
+                                <th width="15%">Origen</th> <th width="18%">Periodo</th>
                                 <th width="22%">Tipo de Personal</th>
                                 <th width="15%">Monto Total</th>
                                 <th width="20%">Fecha Eliminación</th>
@@ -62,10 +62,18 @@
                             {% for p in planillas %}
                                 <tr>
                                     <td class="ps-4 text-muted">#{{ p.id_planilla }}</td>
+                                    
+                                    {# 🚀 Columna Origen añadida para control administrativo #}
+                                    <td>
+                                        <span class="badge {{ 'bg-primary' if p.origen == 'MODERNA' else 'bg-dark text-warning' }} py-1 px-2">
+                                            {{ p.origen }}
+                                        </span>
+                                    </td>
+
                                     <td>
                                         <div class="fw-bold">
                                             {% set meses = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'] %}
-                                            {{ meses[p.mes] if p.mes is defined else 'S/N' }} {{ p.anio }}
+                                            {{ meses[p.mes|int] if p.mes is defined else 'S/N' }} {{ p.anio }}
                                         </div>
                                     </td>
                                     <td>
@@ -83,15 +91,15 @@
                                     </td>
                                     <td class="text-center">
                                         <div class="d-flex justify-content-center gap-2">
-                                            {# Botón Restaurar (Verde) #}
-                                            <form method="POST" action="{{ url_for('legajo.restaurar_planilla', id=p.id_planilla) }}">
+                                            {# Botón Restaurar (Actualizado con origen) #}
+                                            <form method="POST" action="{{ url_for('legajo.restaurar_planilla', id=p.id_planilla, origen=p.origen) }}">
                                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                                 <button type="submit" class="btn btn-success btn-sm p-1 px-2 shadow-sm" title="Restaurar Planilla" onclick="return confirm('¿Restaurar esta planilla?')">
                                                     <i class="bi bi-arrow-counterclockwise"></i>
                                                 </button>
                                             </form>
-                                            {# Botón Eliminar Permanente (Rojo) #}
-                                            <form method="POST" action="{{ url_for('legajo.eliminar_permanente_planilla', id=p.id_planilla) }}">
+                                            {# Botón Eliminar Permanente (Actualizado con origen) #}
+                                            <form method="POST" action="{{ url_for('legajo.eliminar_permanente_planilla', id=p.id_planilla, origen=p.origen) }}">
                                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                                 <button type="submit" class="btn btn-danger btn-sm p-1 px-2 shadow-sm" title="Eliminar Permanente" onclick="return confirm('¿Desea ELIMINAR PERMANENTEMENTE esta planilla? Los datos no se podrán recuperar.')">
                                                     <i class="bi bi-trash"></i>

@@ -1,5 +1,9 @@
 
+<<<<<<< HEAD
 # Sistema de Escalafón Digital - HMPP Pasco
+
+# Sistema de Esacalafón Digital - HMPP Pasco
+2f7550f (Migración HMPP: Calculadora dinámica, importación Excel inteligente con SCTR y gestión de histórico)
 
 Este es un sistema de gestión de legajos digitales desarrollado en Python con el framework Flask, siguiendo una arquitectura en capas para asegurar su mantenibilidad y escalabilidad.
 

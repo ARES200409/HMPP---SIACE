@@ -86,5 +86,25 @@
             <div class="ingresar-link">Ingresar ></div>
         </a>
     </div>
+    <div class="col-md-6 col-lg-4">
+        <a href="{{ url_for('legajo.listar_personal_historico') }}" class="dashboard-card historical-payroll">
+            <div class="card-icon">
+                <i class="bi bi-file-earmark-medical-fill"></i>
+            </div>
+            <h4>Planillas Históricas</h4>
+            <p class="card-description">Registrar y digitalizar pagos antiguos o de papel al récord laboral.</p>
+            <div class="ingresar-link">Ingresar ></div>
+        </a>
+    </div>
+    <div class="col-md-6 col-lg-4">
+        <a href="{{ url_for('legajo.catalogo_presupuestal') }}" class="dashboard-card catalogo-s10">
+            <div class="card-icon">
+                <i class="bi bi-diagram-3-fill"></i>
+            </div>
+            <h4>Catálogo Presupuestal</h4>
+            <p class="card-description">Administrar el diccionario oficial de NP, Actividades y Metas (S10/SIAF).</p>
+            <div class="ingresar-link">Ingresar ></div>
+        </a>
+    </div>
 </div>
 {% endblock %}

@@ -1,0 +1,132 @@
+{% extends 'layouts/dashboard.html' %}
+{% block title %}Control de Personal Histórico - Escalafón{% endblock %}
+
+{% block dashboard_content %}
+<div class="d-flex justify-content-between align-items-center mb-4 bg-white p-3 rounded shadow-sm border-start border-4 border-primary">
+    <div>
+        <h1 class="h3 mb-1"><i class="bi bi-archive-fill text-primary"></i> Control de Personal Histórico</h1>
+        <p class="text-muted mb-0 small">
+            Módulo de digitalización de planillas antiguas: <strong>Soles de Oro, Intis y Nuevos Soles.</strong>
+        </p>
+    </div>
+    <div class="text-end">
+        <button type="button" class="btn btn-success fw-bold shadow-sm py-2" data-bs-toggle="modal" data-bs-target="#modalDesignar">
+            <i class="bi bi-person-plus-fill me-1"></i> Designar Nuevo Histórico
+        </button>
+    </div>
+</div>
+
+<div class="modal fade" id="modalDesignar" tabindex="-1" aria-labelledby="modalDesignarLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <form action="{{ url_for('legajo.designar_personal_historico') }}" method="POST">
+                
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                <div class="modal-header bg-primary text-white py-3">
+                    <h5 class="modal-title" id="modalDesignarLabel"><i class="bi bi-search me-2"></i> Habilitar Trabajador</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="alert alert-info py-2 small mb-4">
+                        <i class="bi bi-info-circle-fill me-2"></i> 
+                        Al ingresar el DNI, el trabajador se "moverá" a este listado para permitir la carga de sus datos antiguos.
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label fw-bold text-dark">DNI del Trabajador</label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-light text-primary"><i class="bi bi-card-heading"></i></span>
+                            <input type="text" name="dni_busqueda" class="form-control form-control-lg" 
+                                   placeholder="Ej. 04047597" required maxlength="8" pattern="\d{8}" 
+                                   title="Debe ingresar exactamente 8 números">
+                        </div>
+                        <div class="form-text mt-2">Busque por el DNI registrado en el sistema general.</div>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light border-0">
+                    <button type="button" class="btn btn-secondary px-4" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary px-4">
+                        Confirmar Designación <i class="bi bi-arrow-right-short"></i>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm border-0 rounded-3">
+    <div class="card-header bg-white py-3 border-bottom d-flex align-items-center">
+        <h6 class="mb-0 fw-bold text-dark"><i class="bi bi-list-check me-2 text-primary"></i> Personal en Proceso de Transcripción</h6>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="bg-light text-primary small text-uppercase">
+                    <tr>
+                        <th class="ps-4" style="width: 15%;">DNI</th>
+                        <th style="width: 40%;">Apellidos y Nombres</th>
+                        <th class="text-center" style="width: 15%;">Estado Legajo</th>
+                        <th class="text-center" style="width: 30%;">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in pagination.items %}
+                    <tr>
+                        <td class="ps-4">
+                            <span class="badge bg-light text-dark border p-2 fw-bold fs-6">{{ p.dni }}</span>
+                        </td>
+                        <td>
+                            <div class="fw-bold text-dark">{{ p.apellidos }}, {{ p.nombres }}</div>
+                            <small class="text-muted"><i class="bi bi-tag-fill me-1"></i> Designado como Histórico</small>
+                        </td>
+                        <td class="text-center">
+                            {% if p.estado == 1 or p.estado == 'Activo' %}
+                                <span class="badge rounded-pill bg-success-subtle text-success border border-success px-3">Activo</span>
+                            {% else %}
+                                <span class="badge rounded-pill bg-secondary-subtle text-secondary border border-secondary px-3">Inactivo</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            <div class="d-flex justify-content-center gap-2">
+                                <a href="{{ url_for('legajo.gestionar_historico_personal', personal_id=p.id_personal) }}" 
+                                   class="btn btn-primary btn-sm rounded-pill px-3 shadow-sm hover-elevate">
+                                    <i class="bi bi-pencil-square me-1"></i> Registrar
+                                </a>
+
+                                <form action="{{ url_for('legajo.revertir_personal_historico', id_personal=p.id_personal) }}" 
+                                      method="POST" class="d-inline m-0"
+                                      onsubmit="return confirm('¿Está seguro de quitar a {{ p.nombres }} de esta lista? Su estado volverá a ser personal Actual y ya no aparecerá aquí.');">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="btn btn-outline-danger btn-sm rounded-pill px-3 shadow-sm" title="Quitar de la lista de Históricos">
+                                        <i class="bi bi-person-dash-fill me-1"></i> Quitar
+                                    </button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="4" class="text-center py-5">
+                            <div class="py-4">
+                                <div class="mb-3 text-muted opacity-25">
+                                    <i class="bi bi-person-workspace" style="font-size: 5rem;"></i>
+                                </div>
+                                <h5 class="text-dark fw-bold">No hay trabajadores designados</h5>
+                                <p class="text-muted mx-auto" style="max-width: 400px;">
+                                    Este módulo inicia en blanco para mayor orden. Use el botón superior para 
+                                    seleccionar al personal que desea digitalizar.
+                                </p>
+                                <button type="button" class="btn btn-outline-primary btn-sm mt-2" data-bs-toggle="modal" data-bs-target="#modalDesignar">
+                                    Hacer mi primera designación
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,4 +1,4 @@
-# 💻 Requisitos del Sistema - Legajo Digital DIRESA
+# 💻 Requisitos del Sistema - Escalafón Digital HMPP
 
 ## ✅ Compatibilidad
 

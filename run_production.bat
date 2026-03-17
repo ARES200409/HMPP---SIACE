@@ -5,7 +5,7 @@ REM Fecha: Noviembre 2025
 
 echo.
 echo ╔══════════════════════════════════════════════════════════════╗
-echo ║      LEGAJO DIGITAL DIRESA - SERVIDOR DE PRODUCCION         ║
+echo ║      ESCALAFÓN DIGITAL HMPP - SERVIDOR DE PRODUCCION         ║
 echo ╚══════════════════════════════════════════════════════════════╝
 echo.
 

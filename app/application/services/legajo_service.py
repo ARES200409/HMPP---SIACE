@@ -41,37 +41,135 @@ class LegajoService:
         """Orquesta la verificación de la existencia de un DNI."""
         return self._personal_repo.check_dni_exists(dni)
 
+    # ---------------------------------------------------------
+    # 1. FUNCIÓN ORIGINAL INTACTA (Para que RRHH vuelva a la normalidad)
+    # ---------------------------------------------------------
     def get_all_personal_paginated(self, page, per_page, filters=None):
-        """Obtiene una lista paginada y filtrada de personal."""
+        """Obtiene una lista paginada y filtrada de personal para RRHH."""
         return self._personal_repo.get_all_paginated(page, per_page, filters)
+
+
+    # ---------------------------------------------------------
+    # 2. NUEVA FUNCIÓN EXCLUSIVA PARA HISTÓRICOS (Soles de Oro, Intis)
+    # ---------------------------------------------------------
+    def get_personal_historico_paginated(self, page, per_page, filters=None):
+        """
+        Obtiene personal filtrado exclusivamente para el módulo histórico.
+        Extrae datos a memoria y no cierra conexión (previene error 500).
+        """
+        from app.database import get_db_read
+        conn = get_db_read() 
+        cursor = conn.cursor()
+        try:
+            offset = (page - 1) * per_page
+            where_clauses = ["tipo_registro = 1"] # 🚀 FILTRO HISTÓRICO OBLIGATORIO
+            params = []
+            
+            if filters and filters.get('dni'):
+                where_clauses.append("dni LIKE ?")
+                params.append(f"%{filters['dni']}%")
+                
+            if filters and filters.get('nombres'):
+                where_clauses.append("(nombres LIKE ? OR apellidos LIKE ?)")
+                params.append(f"%{filters['nombres']}%")
+                params.append(f"%{filters['nombres']}%")
+
+            where_sql = " WHERE " + " AND ".join(where_clauses)
+
+            query = f"""
+                SELECT id_personal, dni, nombres, apellidos, activo as estado, tipo_registro 
+                FROM personal {where_sql}
+                ORDER BY apellidos ASC
+                OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
+            """
+            cursor.execute(query, params + [offset, per_page])
+            
+            columns = [column[0] for column in cursor.description]
+            items = [dict(zip(columns, row)) for row in cursor.fetchall()]
+            
+            cursor.execute(f"SELECT COUNT(*) FROM personal {where_sql}", params)
+            total = cursor.fetchone()[0]
+            cursor.close()
+
+            from app.presentation.routes.legajo_routes import RecordPagination
+            return RecordPagination(items, page, per_page, total)
+        except Exception as e:
+            print(f"Error en listado histórico: {e}")
+            return None
+        # Flask cerrará la conexión automáticamente
+    
+    def designar_personal_historico(self, dni):
+        """
+        CREADO: Marca a un trabajador como 'Histórico' (1) en la BD.
+        """
+        conn = get_db_write() # Usando tu conexión de escritura
+        cursor = conn.cursor()
+        try:
+            # Cambiamos tipo_registro a 1 para el DNI ingresado
+            cursor.execute("UPDATE personal SET tipo_registro = 1 WHERE dni = ?", (dni,))
+            rows = cursor.rowcount
+            conn.commit()
+            return rows > 0
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Error designando histórico: {e}")
+            return False
+        finally:
+            conn.close()
 
     def get_personal_details(self, personal_id, current_user):
         """
-        Obtiene todos los detalles del legajo de una persona por su ID,
-        aplicando reglas de control de acceso inteligentes.
+        Obtiene todos los detalles de un legajo y verifica permisos (IDOR).
+        🚀 ACTUALIZACIÓN: Trae Récords Modernos y Planillas Históricas por separado.
         """
-        # 1. Recuperar la información del repositorio (JOINs de SQL Server)
+        # 1. VERIFICACIÓN DE SEGURIDAD (IDOR)
+        if current_user.rol == 'Personal':
+            if current_user.id_personal != personal_id:
+                self.audit_repo.log_event(
+                    current_user.id, 
+                    'Seguridad', 
+                    'INTENTO_IDOR_BLOQUEADO', 
+                    f"Intento de acceso no autorizado al legajo {personal_id}"
+                )
+                raise PermissionError("Acceso denegado. Solo puede ver su propio legajo.")
+
+        # 2. OBTENER LEGAJO BÁSICO (Esto ya trae los modernos en 'record_laboral')
         legajo = self._personal_repo.get_full_legajo_by_id(personal_id)
         if not legajo:
             return None
 
-        # 🚀 DEFINICIÓN DE ROLES: Unificamos los roles administrativos
-        roles_con_acceso_total = ['RRHH', 'Sistemas', 'AdministradorLegajos', 'AdministradorEscalafon']
-
-        # 🚀 LÓGICA DE AUTO-ACCESO: Permite que el trabajador vea su propio legajo
-        id_personal_usuario = int(getattr(current_user, 'id_personal', 0))
-        es_propietario = id_personal_usuario == int(personal_id)
-        
-        # 🚀 LÓGICA DE ADMINISTRADOR: Permite acceso global a roles autorizados
-        es_administrativo = current_user.rol in roles_con_acceso_total
-
-        # 🛡️ VALIDACIÓN FINAL: Si no es admin Y no es su propia info, bloqueamos.
-        if not (es_administrativo or es_propietario):
-            # Este error será capturado por la ruta para mostrar un flash message
-            raise PermissionError(f"Seguridad DIRESA: El usuario {current_user.username} no tiene permiso para ver el legajo {personal_id}.")
-        
-        if legajo and 'contratos' not in legajo:
-            legajo['contratos'] = self._personal_repo.get_contratos_directo(personal_id)
+        # 3. OBTENER PLANILLAS HISTÓRICAS CERRADAS (Bóveda de Escalafón)
+        from app.database.connector import get_db_read
+        conn = get_db_read()
+        cursor = conn.cursor()
+        try:
+            query_historicos = """
+                SELECT 
+                    id_planilla_historica as id_record, 
+                    anio, mes, tipo_moneda,
+                    ISNULL(ruta_generado, ruta_escaneado) as archivo_ruta,
+                    'Planilla Histórica (Sustento)' as descripcion,
+                    'HISTÓRICO_' + CAST(anio AS VARCHAR) + '_' + mes + '.pdf' as nombre_archivo,
+                    cargo_historico, monto_neto
+                FROM Planillas_Historicas
+                WHERE id_personal = ? 
+                ORDER BY anio DESC, 
+                         CASE mes 
+                            WHEN 'Diciembre' THEN 12 WHEN 'Noviembre' THEN 11 WHEN 'Octubre' THEN 10
+                            WHEN 'Septiembre' THEN 9 WHEN 'Agosto' THEN 8 WHEN 'Julio' THEN 7
+                            WHEN 'Junio' THEN 6 WHEN 'Mayo' THEN 5 WHEN 'Abril' THEN 4
+                            WHEN 'Marzo' THEN 3 WHEN 'Febrero' THEN 2 WHEN 'Enero' THEN 1
+                         END DESC
+            """
+            cursor.execute(query_historicos, (personal_id,))
+            cols = [column[0] for column in cursor.description]
+            legajo['historico_laboral'] = [dict(zip(cols, row)) for row in cursor.fetchall()]
+        except Exception as e:
+            print(f"Error extrayendo históricos: {e}")
+            legajo['historico_laboral'] = []
+        finally:
+            cursor.close()
+            conn.close()
 
         return legajo
 

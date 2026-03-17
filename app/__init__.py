@@ -184,7 +184,8 @@ def create_app():
     def inject_counts():
         """
         Calcula contadores para 'Solicitudes' (Docs) y 'Modificación' (ARCO).
-        Incluye protección contra conexiones cerradas.
+        CORRECCIÓN DEFINITIVA: Utiliza la conexión compartida de Flask (g) 
+        de forma natural, sin cerrarla ni forzar "resurrecciones".
         """
         conteo_docs = 0
         conteo_arco = 0
@@ -197,7 +198,7 @@ def create_app():
         roles_admin = ['Administrador', 'Escalafon', 'Legajos', 'AdministradorEscalafon', 'AdministradorLegajos', 'RRHH', 'Sistemas']
 
         if current_user.rol in roles_admin:
-            # 1. CONTAR SOLICITUDES DE DOCUMENTOS (Usando tu Servicio original)
+            # 1. CONTAR SOLICITUDES DE DOCUMENTOS
             try:
                 solicitud_service = current_app.config.get('SOLICITUDES_SERVICE')
                 if solicitud_service:
@@ -208,38 +209,28 @@ def create_app():
                 # Fallo silencioso para no romper la web
                 pass
 
-            # 2. CONTAR SOLICITUDES ARCO (SQL Directo + PROTECCIÓN)
+            # 2. CONTAR SOLICITUDES ARCO (Limpio y directo)
             try:
                 from app.database import get_db_read
-                from flask import g
                 
-                # --- TRUCO DE RESURRECCIÓN ---
-                # Si la conexión existe pero está cerrada (muerta), la borramos
-                # para obligar a get_db_read() a crear una nueva y fresca.
-                if hasattr(g, 'db_conn') and g.db_conn:
-                    try:
-                        # Intentamos crear un cursor para ver si está viva
-                        g.db_conn.cursor()
-                    except:
-                        # Si falla, es que estaba cerrada. La matamos para revivirla.
-                        g.db_conn = None
-                # -----------------------------
-
+                # Obtenemos la conexión (Flask nos dará la misma que ya usó la ruta principal)
                 conn = get_db_read()
                 cursor = conn.cursor()
+                
                 cursor.execute("SELECT COUNT(*) FROM solicitudes_arco WHERE estado = 'PENDIENTE'")
                 row = cursor.fetchone()
                 if row:
                     conteo_arco = row[0]
                 
-                # ¡IMPORTANTE!: NO cerramos la conexión aquí (conn.close) 
-                # porque Flask la necesita para seguir dibujando la página.
+                # 🚀 IMPORTANTE: Solo cerramos el cursor para liberar memoria.
+                # NUNCA hacemos conn.close() aquí, Flask (teardown_appcontext) lo hará al final.
+                cursor.close()
 
             except Exception as e:
                 # Si algo falla aquí, solo imprimimos en consola negra, no mostramos error al usuario
                 print(f"⚠️ Error silencioso en contador ARCO: {e}")
 
-        # Retornamos ambas variables
+        # Retornamos ambas variables listas para usarse en el HTML
         return dict(conteo_docs=conteo_docs, conteo_arco=conteo_arco)
 
     with app.app_context():

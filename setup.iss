@@ -1,9 +1,9 @@
-; Script de Inno Setup para Sistema de Legajo Digital DIRESA
+; Script de Inno Setup para Sistema de Legajo Digital HMPP
 ; Este script crea un instalador profesional .exe para Windows
 
-#define MyAppName "Sistema de Legajo Digital DIRESA"
+#define MyAppName "Sistema Digital Escalafon HMPP"
 #define MyAppVersion "1.0.0"
-#define MyAppPublisher "DIRESA Pasco"
+#define MyAppPublisher "HMPP"
 #define MyAppURL "https://github.com/carlosDaniel2004/Legajo-Digital-Diresa"
 #define MyAppExeName "iniciar_aplicacion.bat"
 
@@ -16,14 +16,14 @@ AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
-DefaultDirName={autopf}\LegajoDigitalDIRESA
+DefaultDirName=C:\LegajoDigitalHMPP
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
 LicenseFile=LICENSE.txt
 InfoBeforeFile=REQUISITOS_SISTEMA.md
 OutputDir=instalador
-OutputBaseFilename=LegajoDigital_DIRESA_Setup_v{#MyAppVersion}
-SetupIconFile=app\presentation\static\img\logo.ico
+OutputBaseFilename=LegajoDigital_HMPP_Setup_v{#MyAppVersion}
+SetupIconFile=app\presentation\static\muni_logo.ico
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
@@ -50,14 +50,14 @@ Source: "launcher.vbs"; DestDir: "{app}"; Flags: ignoreversion
 [Icons]
 ; Accesos directos en el menú inicio
 ; Usamos wscript.exe para ejecutar el VBS sin ventana
-Name: "{group}\{#MyAppName}"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\launcher.vbs"""; WorkingDir: "{app}"; IconFilename: "{app}\app\presentation\static\img\logo.ico"
+Name: "{group}\{#MyAppName}"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\launcher.vbs"""; WorkingDir: "{app}"; IconFilename: "{app}\app\presentation\static\muni_logo.ico"
 
 Name: "{group}\Verificar Sistema"; Filename: "{app}\verificar_sistema.py"; WorkingDir: "{app}"; IconFilename: "{sys}\shell32.dll"; IconIndex: 23
 Name: "{group}\Documentación"; Filename: "{app}\README.md"; IconFilename: "{sys}\shell32.dll"; IconIndex: 70
 Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
 
 ; Accesos directos en el escritorio (opcional)
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\launcher.vbs"""; WorkingDir: "{app}"; Tasks: desktopicon; IconFilename: "{app}\app\presentation\static\img\logo.ico"
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\launcher.vbs"""; WorkingDir: "{app}"; Tasks: desktopicon; IconFilename: "{app}\app\presentation\static\muni_logo.ico"
 
 [Run]
 ; Verificar si Python está instalado
@@ -66,9 +66,6 @@ Filename: "python"; Parameters: "--version"; Flags: runhidden waituntilterminate
 ; Instalar dependencias de Python
 Filename: "python"; Parameters: "-m pip install --upgrade pip"; WorkingDir: "{app}"; Flags: runhidden waituntilterminated; StatusMsg: "Actualizando pip..."; Check: CheckPython
 Filename: "python"; Parameters: "-m pip install -r requirements.txt"; WorkingDir: "{app}"; Flags: runhidden waituntilterminated; StatusMsg: "Instalando dependencias de Python..."; Check: CheckPython
-
-; Ejecutar configurador (opcional)
-
 
 ; Abrir documentación
 Filename: "{app}\GUIA_RAPIDA.md"; Description: "Ver guía rápida de instalación"; Flags: postinstall skipifsilent shellexec nowait
@@ -131,7 +128,7 @@ begin
   
   // Valores por defecto
   DBConfigPage.Values[0] := 'localhost';
-  DBConfigPage.Values[1] := 'BaseDatosDiresa';
+  DBConfigPage.Values[1] := 'BaseDatosHMPP';
   DBConfigPage.Values[2] := 'sa';
   
   // Página 2: Usuarios de la Aplicación
@@ -187,11 +184,13 @@ begin
     
     if ErrorMsg <> '' then
     begin
-      MsgBox('Faltan los siguientes componentes requeridos:' + #13#10#13#10 + ErrorMsg + #13#10 +
-             'Por favor, instalelos antes de continuar.' + #13#10#13#10 +
-             'Consulte el archivo REQUISITOS_SISTEMA.md para mas informacion.',
-             mbError, MB_OK);
-      Result := False;
+      if MsgBox('Atención: El sistema no detectó automáticamente los siguientes componentes:' + #13#10#13#10 + ErrorMsg + #13#10 +
+             'Si está seguro de que ya los tiene instalados, puede continuar.' + #13#10#13#10 +
+             '¿Desea continuar con la instalación de todos modos?',
+             mbConfirmation, MB_YESNO) = idNo then
+      begin
+        Result := False;
+      end;
     end;
   end;
   
@@ -231,7 +230,7 @@ begin
   if CurStep = ssPostInstall then
   begin
     // Generar clave secreta basada en timestamp de instalación
-    SecretKey := 'legajo_' + GetDateTimeString('yyyymmddhhnnss', '-', ':') + '_diresa_secret_key_2024';
+    SecretKey := 'legajo_' + GetDateTimeString('yyyymmddhhnnss', '-', ':') + '_hmpp_secret_key_2026';
     
     // Determinar si usar TLS para email
     if Trim(EmailConfigPage.Values[0]) <> '' then
@@ -261,14 +260,14 @@ begin
     
     // Guardar el archivo .env en LOCALAPPDATA para que sea editable por el usuario
     // Asegurarse de que el directorio existe (aunque [Dirs] debería crearlo)
-    ForceDirectories(ExpandConstant('{localappdata}\LegajoDigitalDIRESA'));
-    SaveStringToFile(ExpandConstant('{localappdata}\LegajoDigitalDIRESA\.env'), EnvContent, False);
+    ForceDirectories(ExpandConstant('{localappdata}\LegajoDigitalHMPP'));
+    SaveStringToFile(ExpandConstant('{localappdata}\LegajoDigitalHMPP\.env'), EnvContent, False);
   end;
 end;
 
 [Dirs]
 ; Crear directorio de datos en LOCALAPPDATA
-Name: "{localappdata}\LegajoDigitalDIRESA"; Permissions: users-modify
+Name: "{localappdata}\LegajoDigitalHMPP"; Permissions: users-modify
 
 [Messages]
 WelcomeLabel2=Este asistente instalará [name/ver] en su computadora.%n%nSe recomienda que cierre todas las demás aplicaciones antes de continuar.%n%nNOTA: Asegúrese de tener instalado Python 3.8+, SQL Server y ODBC Driver 17 antes de continuar.

@@ -360,8 +360,8 @@
                             </td>
                             <td>
                                 <div class="d-flex justify-content-center gap-1">
-                                    <a href="{{ url_for('record_laboral.visualizar_archivo', id_record=doc.id_record) }}" 
-                                       class="btn btn-xs btn-rojo-ojo" target="_blank" title="Ver Archivo">
+                                    <a href="{{ url_for('legajo.visualizar_boleta_record', id_record=doc.id_record) }}" 
+                                    class="btn btn-xs btn-rojo-ojo" target="_blank" title="Ver Archivo">
                                         <i class="bi bi-eye"></i>
                                     </a>
                                     {% if personal.activo %}

@@ -53,7 +53,7 @@ class SqlServerUsuarioRepository(IUsuarioRepository):
             return usuarios
         finally:
             cursor.close()
-            conn.close()
+            
 
 
     def find_all_users_with_roles(self):
@@ -115,7 +115,7 @@ class SqlServerUsuarioRepository(IUsuarioRepository):
             return []
         finally:
             cursor.close()
-            conn.close()
+           
 
     def find_by_id(self, user_id):
         """Busca un usuario por su ID con todos los campos incluyendo email y rol."""
@@ -638,6 +638,7 @@ class SqlServerPersonalRepository(IPersonalRepository):
         2. Inserta el contrato en 'dbo.contratos' incluyendo el PDF para el 'ojito'.
         3. Crea el usuario solo si no existe para evitar el error de DNI duplicado.
         """
+        import zlib
         from app.database.connector import get_db_write
         from datetime import datetime
         conn = get_db_write()
@@ -654,6 +655,7 @@ class SqlServerPersonalRepository(IPersonalRepository):
                 SET id_cargo = ?, 
                     id_unidad = ?, 
                     id_tipo_contrato = ?,
+                    sueldo = ?,
                     activo = 1 
                 WHERE id_personal = ?
             """
@@ -661,8 +663,18 @@ class SqlServerPersonalRepository(IPersonalRepository):
                 form_data['id_cargo'], 
                 form_data['id_unidad'], 
                 form_data['id_tipo_contrato'],
+                form_data.get('sueldo', 0),
                 form_data['id_personal']
             ))
+
+            # 🔥 MINIMIZAR TAMAÑO (Magia de Compresión Nivel 9)
+            # Esto reduce un archivo de 2MB a una fracción de su tamaño original
+            try:
+                file_bytes_optimizado = zlib.compress(file_bytes, 9)
+                print(f"📦 Optimizando {filename}: De {len(file_bytes)} bytes a {len(file_bytes_optimizado)} bytes.")
+            except Exception as e:
+                file_bytes_optimizado = file_bytes # Si falla, guardamos el original
+                print(f"⚠️ No se pudo minimizar: {e}")
 
             # 🚀 2. INSERTAR CONTRATO (dbo.contratos)
             # Se han incluido las columnas de archivo y auditoría para que funcione el 'ojito'
@@ -683,7 +695,7 @@ class SqlServerPersonalRepository(IPersonalRepository):
                 form_data.get('resolucion'),
                 form_data['id_cargo'],
                 filename,           # nombre_archivo_real
-                file_bytes,         # archivo_binario (VARBINARY)
+                file_bytes_optimizado,         # archivo_binario (VARBINARY)
                 ahora_sistema       # fecha_registro_auditoria
             ))
 
@@ -796,71 +808,84 @@ class SqlServerPersonalRepository(IPersonalRepository):
     def get_full_legajo_by_id(self, personal_id):
         """
         Obtiene el legajo completo de un trabajador. 
-        CORREGIDO: Ahora jala el nombre de la Unidad Administrativa para la cabecera.
+        CORREGIDO: Implementación de context manager para cursor y protección de conexión.
         """
+        from app.database.connector import get_db_read
         conn = get_db_read()
-        cursor = conn.cursor()
+        
+        # 🛡️ IMPORTANTE: No cerramos 'conn' manualmente. Flask-SQLAlchemy o tu pool 
+        # lo gestionan. Solo nos aseguramos de cerrar los cursores.
         try:
-            # 1. Ejecutar procedimiento para info básica
-            cursor.execute("{CALL sp_obtener_legajo_completo_por_personal(?)}", personal_id)
-            personal_info = _row_to_dict(cursor, cursor.fetchone())
-            
-            if not personal_info: 
-                return None 
-
-            # 🚀 EL PUENTE MANUAL (Añadido): Buscamos el nombre de la unidad
-            # Como el SP anterior no hace el JOIN, lo hacemos nosotros aquí en Python.
-            id_unidad = personal_info.get('id_unidad')
-            if id_unidad:
-                cursor.execute("SELECT nombre FROM unidad_administrativa WHERE id_unidad = ?", id_unidad)
-                unidad_row = cursor.fetchone()
-                # Guardamos el nombre en 'nombre_unidad' para que el HTML lo encuentre
-                personal_info['nombre_unidad'] = unidad_row[0] if unidad_row else "No especificada"
-            else:
-                personal_info['nombre_unidad'] = "Sin Unidad Asignada"
+            with conn.cursor() as cursor:
+                # 1. Ejecutar procedimiento para info básica
+                cursor.execute("{CALL sp_obtener_legajo_completo_por_personal(?)}", (personal_id,))
+                row = cursor.fetchone()
+                personal_info = _row_to_dict(cursor, row)
                 
-            legajo = {"personal": personal_info}
-            
-            # 2. Cargar sets intermedios del SP (Estudios, Capacitaciones, etc.)
-            if cursor.nextset(): legajo["estudios"] = [_row_to_dict(cursor, r) for r in cursor.fetchall()]
-            if cursor.nextset(): legajo["capacitaciones"] = [_row_to_dict(cursor, r) for r in cursor.fetchall()]
-            if cursor.nextset(): legajo["contratos"] = [_row_to_dict(cursor, r) for r in cursor.fetchall()]
-            if cursor.nextset(): legajo["historial_laboral"] = [_row_to_dict(cursor, r) for r in cursor.fetchall()]
-            if cursor.nextset(): legajo["licencias"] = [_row_to_dict(cursor, r) for r in cursor.fetchall()]
-            
-            # 3. Documentos del Legajo (DNI, CV, etc.)
-            query_docs = """
-                SELECT d.*, td.nombre_tipo 
-                FROM documentos d
-                LEFT JOIN tipo_documento td ON d.id_tipo = td.id_tipo
-                WHERE d.id_personal = ? AND d.activo = 1
-                ORDER BY d.fecha_subida DESC
-            """
-            cursor.execute(query_docs, personal_id)
-            # Guardamos los resultados para que el HTML los reconozca por nombre
-            legajo["documentos"] = [_row_to_dict(cursor, row) for row in cursor.fetchall()]
+                if not personal_info: 
+                    return None 
 
-            # 4. RÉCORD LABORAL (PLANILLAS Y PAGOS)
-            query_record = """
-                SELECT 
-                    id_record, 
-                    anio, 
-                    mes, 
-                    descripcion, 
-                    nombre_archivo, 
-                    fecha_registro,  -- <--- AGREGAMOS ESTO PARA LA AUDITORÍA
-                    fecha_inicio, 
-                    fecha_fin_vencimiento
-                FROM record_laboral 
-                WHERE id_personal = ? AND activo = 1
-                ORDER BY fecha_registro DESC -- Ordenamos por lo más reciente
-            """
-            cursor.execute(query_record, personal_id)
-            legajo["record_laboral"] = [_row_to_dict(cursor, row) for row in cursor.fetchall()]
-            
-            return legajo
-        finally:
-            cursor.close()
+                # 🚀 EL PUENTE MANUAL: Buscamos el nombre de la unidad
+                id_unidad = personal_info.get('id_unidad')
+                if id_unidad:
+                    cursor.execute("SELECT nombre FROM unidad_administrativa WHERE id_unidad = ?", (id_unidad,))
+                    unidad_row = cursor.fetchone()
+                    personal_info['nombre_unidad'] = unidad_row[0] if unidad_row else "No especificada"
+                else:
+                    personal_info['nombre_unidad'] = "Sin Unidad Asignada"
+                    
+                legajo = {"personal": personal_info}
+                
+                # 2. Cargar sets intermedios del SP (Estudios, Capacitaciones, etc.)
+                # nextset() mueve el cursor al siguiente bloque de resultados del SP
+                if cursor.nextset(): 
+                    legajo["estudios"] = [_row_to_dict(cursor, r) for r in cursor.fetchall()]
+                if cursor.nextset(): 
+                    legajo["capacitaciones"] = [_row_to_dict(cursor, r) for r in cursor.fetchall()]
+                if cursor.nextset(): 
+                    legajo["contratos"] = [_row_to_dict(cursor, r) for r in cursor.fetchall()]
+                if cursor.nextset(): 
+                    legajo["historial_laboral"] = [_row_to_dict(cursor, r) for r in cursor.fetchall()]
+                if cursor.nextset(): 
+                    legajo["licencias"] = [_row_to_dict(cursor, r) for r in cursor.fetchall()]
+                
+                # 3. Documentos del Legajo (DNI, CV, etc.)
+                query_docs = """
+                    SELECT d.*, td.nombre_tipo 
+                    FROM documentos d
+                    LEFT JOIN tipo_documento td ON d.id_tipo = td.id_tipo
+                    WHERE d.id_personal = ? AND d.activo = 1
+                    ORDER BY d.fecha_subida DESC
+                """
+                cursor.execute(query_docs, (personal_id,))
+                legajo["documentos"] = [_row_to_dict(cursor, row) for row in cursor.fetchall()]
+
+                # 4. RÉCORD LABORAL (PLANILLAS Y PAGOS)
+                query_record = """
+                    SELECT 
+                        id_record, 
+                        anio, 
+                        mes, 
+                        descripcion, 
+                        nombre_archivo, 
+                        fecha_registro,
+                        fecha_inicio, 
+                        fecha_fin_vencimiento
+                    FROM record_laboral 
+                    WHERE id_personal = ? AND activo = 1
+                    ORDER BY fecha_registro DESC
+                """
+                cursor.execute(query_record, (personal_id,))
+                legajo["record_laboral"] = [_row_to_dict(cursor, row) for row in cursor.fetchall()]
+                
+                return legajo
+
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"🔥 Error al cargar legajo completo para ID {personal_id}: {e}")
+            return None
+        # ✅ 'with' cierra el cursor automáticamente. No incluimos conn.close().
         
             
     # Llama a un SP para listar, filtrar y paginar al personal.
@@ -953,18 +978,23 @@ class SqlServerPersonalRepository(IPersonalRepository):
         cursor = conn.cursor()
         # CORRECCIÓN: 'archivo' en lugar de 'archivo_binario'
         query = """
-            INSERT INTO documentos (
-                id_personal, id_tipo, id_seccion, nombre_archivo, 
-                descripcion, archivo, activo, fecha_subida, 
-                fecha_inicio, fecha_fin
-            ) VALUES (?, ?, ?, ?, ?, ?, 1, GETDATE(), ?, ?)
-        """
+                    INSERT INTO documentos (
+                        id_personal, id_tipo, id_seccion, nombre_archivo, 
+                        descripcion, archivo, activo, fecha_subida, 
+                        fecha_emision, fecha_inicio, fecha_fin
+                    ) VALUES (?, ?, ?, ?, ?, ?, 1, GETDATE(), ?, ?, ?)
+                """
         params = (
-            doc_data.get('id_personal'), doc_data.get('id_tipo'), 
-            doc_data.get('id_seccion'), doc_data.get('nombre_archivo'), 
-            doc_data.get('descripcion'), file_bytes,
-            doc_data.get('fecha_inicio'), doc_data.get('fecha_fin')
-        )
+                    doc_data.get('id_personal'), 
+                    doc_data.get('id_tipo'), 
+                    doc_data.get('id_seccion'), 
+                    doc_data.get('nombre_archivo'), 
+                    doc_data.get('descripcion'), 
+                    file_bytes,
+                    doc_data.get('fecha_emision'), # <--- ¡AQUÍ ESTÁ EL ESLABÓN PERDIDO!
+                    doc_data.get('fecha_inicio'), 
+                    doc_data.get('fecha_fin')
+                )
         try:
             cursor.execute(query, params)
             conn.commit()
@@ -987,11 +1017,6 @@ class SqlServerPersonalRepository(IPersonalRepository):
         cursor.execute("SELECT id_seccion, nombre_seccion FROM legajo_secciones ORDER BY id_seccion")
         return [(row.id_seccion, row.nombre_seccion) for row in cursor.fetchall()]
 
-    def get_tipos_documento_by_seccion(self, seccion_id):
-        conn = get_db_read()
-        cursor = conn.cursor()
-        cursor.execute("{CALL sp_listar_tipos_documento_por_seccion(?)}", seccion_id)
-        return [(row.id_tipo, row.nombre_tipo) for row in cursor.fetchall()]
 
 
     def get_tipos_documento_for_select(self):
@@ -1121,53 +1146,82 @@ class SqlServerPersonalRepository(IPersonalRepository):
         conn.commit()
         
     def find_by_id(self, personal_id):
-        # Aseguramos la inicialización del logger para debug si la usamos
+        """
+        Busca un registro de personal por su ID.
+        VERSIÓN BLINDADA: Usa context manager para el cursor y protege la conexión global.
+        """
         import logging
         logger = logging.getLogger(__name__)
         logger.info(f"[DEBUG REPO] Buscando Personal ID: {personal_id}") 
         
+        # 1. Obtenemos la conexión (No la cerramos aquí, Flask lo hará al final del request)
+        from app.database.connector import get_db_read
         conn = get_db_read()
-        cursor = conn.cursor()
         
         try:
-            cursor.execute("{CALL sp_obtener_personal_por_id(?)}", personal_id)
-            row = cursor.fetchone()
-            
-            if row:
-                row_dict = _row_to_dict(cursor, row)
+            # 2. 🛡️ El bloque 'with' asegura que el cursor se limpie solo al terminar
+            # pero deja que 'conn' siga disponible para el resto de la página.
+            with conn.cursor() as cursor:
+                # Ejecutamos el Stored Procedure
+                cursor.execute("{CALL sp_obtener_personal_por_id(?)}", (personal_id,))
+                row = cursor.fetchone()
                 
-                # 💡 CORRECCIÓN CRÍTICA: Asegurar que el ID de la persona esté en el diccionario.
-                # Esto garantiza que el objeto Personal.from_dict() tenga su llave primaria.
-                row_dict['id_personal'] = personal_id 
-                
-                personal_obj = Personal.from_dict(row_dict)
+                if row:
+                    # Convertimos la fila cruda de SQL Server a un diccionario Python
+                    row_dict = _row_to_dict(cursor, row)
+                    
+                    # 💡 ASEGURAR ID: Garantizamos que el objeto tenga su llave primaria
+                    # para que los botones de 'Editar' o 'Ver' funcionen en la web.
+                    row_dict['id_personal'] = personal_id 
+                    
+                    # Transformamos el diccionario al Objeto de Dominio 'Personal'
+                    personal_obj = Personal.from_dict(row_dict)
 
-                if personal_obj and hasattr(personal_obj, 'nombres'):
-                     logger.info(f"[DEBUG REPO] Registro encontrado: {personal_obj.nombres} {personal_obj.apellidos}")
+                    if personal_obj and hasattr(personal_obj, 'nombres'):
+                        logger.info(f"[DEBUG REPO] Registro encontrado: {personal_obj.nombres} {personal_obj.apellidos}")
+                    
+                    return personal_obj
                 
-                return personal_obj
-            
-            logger.warning(f"[DEBUG REPO] Registro NO encontrado para ID: {personal_id}.")
-            return None
-            
+                logger.warning(f"[DEBUG REPO] Registro NO encontrado para ID: {personal_id}.")
+                return None
+                
         except Exception as e:
-            logger.error(f"Error al buscar Personal ID {personal_id}: {e}", exc_info=True)
+            logger.error(f"Error crítico al buscar Personal ID {personal_id}: {str(e)}", exc_info=True)
             return None
-        finally:
-            cursor.close()
+        
+        # ✅ NOTA: No hay 'finally' con cursor.close() porque el 'with' lo hace por ti.
+        # ❌ NUNCA pongas conn.close() aquí si quieres que el legajo cargue completo.
 
 
 
     def get_tipos_documento_by_seccion(self, id_seccion):
         """
-        Llama a un SP para obtener los tipos de documento asociados a una sección
-        y los devuelve en un formato ideal para JSON.
+        Consulta DIRECTA (Ignorando el SP). 
+        Apunta a la tabla correcta: tipo_documento_seccion_relacion
         """
         conn = get_db_read()
         cursor = conn.cursor()
-        cursor.execute("{CALL sp_listar_tipos_documento_por_seccion(?)}", id_seccion)
-        # Devuelve directamente una lista de diccionarios
-        return [{"id": row.id_tipo, "nombre": row.nombre_tipo} for row in cursor.fetchall()]      
+        try:
+            query = """
+                SELECT 
+                    t.id_tipo, 
+                    t.nombre_tipo 
+                FROM tipo_documento t
+                INNER JOIN tipo_documento_seccion_relacion r ON t.id_tipo = r.id_tipo_documento
+                WHERE r.id_seccion = ?
+                ORDER BY t.nombre_tipo ASC
+            """
+            cursor.execute(query, id_seccion)
+            
+            # Devolvemos la lista de diccionarios para el JavaScript
+            return [{"id": row[0], "nombre": row[1]} for row in cursor.fetchall()]
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error al listar tipos de documento por sección: {e}")
+            return []
+        finally:
+            cursor.close()     
 
     def count_empleados_por_unidad(self):
         """
@@ -1777,7 +1831,7 @@ class SqlServerPersonalRepository(IPersonalRepository):
             return False
         finally:
             cursor.close()
-            conn.close() # 🔥 MUY IMPORTANTE: Cierra la conexión para evitar errores en terminal
+            
 
     def get_records_by_personal(self, id_personal):
         """
@@ -1989,44 +2043,67 @@ class SqlServerPersonalRepository(IPersonalRepository):
 
 
 
-# Implementación completa y corregida del repositorio de auditoría.
+# Implementación completa, corregida y BLINDADA del repositorio de auditoría.
+import logging
+
+logger = logging.getLogger(__name__)
+
 class SqlServerAuditoriaRepository(IAuditoriaRepository):
+    
     # Llama a un SP para registrar un evento en la bitácora.
     def log_event(self, id_usuario, modulo, accion, descripcion, detalle_json=None):
-        conn = get_db_write()
-        cursor = conn.cursor()
-        cursor.execute("{CALL sp_registrar_bitacora(?, ?, ?, ?, ?)}", id_usuario, modulo, accion, descripcion, detalle_json)
-        conn.commit()
+        conn = None
+        cursor = None
+        try:
+            conn = get_db_write()
+            cursor = conn.cursor()
+            cursor.execute(
+                "{CALL sp_registrar_bitacora(?, ?, ?, ?, ?)}", 
+                id_usuario, modulo, accion, descripcion, detalle_json
+            )
+            conn.commit()
+        except Exception as e:
+            # Si la auditoría falla, guardamos el error en un archivo de texto del servidor,
+            # pero hacemos "rollback" para que no se corrompa la BD.
+            if conn:
+                conn.rollback()
+            logger.error(f"Fallo crítico al registrar auditoría ({accion}): {str(e)}")
+        finally:
+            # SIEMPRE cerrar el cursor para liberar memoria del servidor
+            if cursor:
+                cursor.close()
 
     # Obtiene los logs de forma paginada.
     def get_all_logs_paginated(self, page, per_page):
-        conn = get_db_read()
-        cursor = conn.cursor()
-        # Llama a un SP que maneja la paginación de la tabla bitacora.
-        cursor.execute("{CALL sp_listar_bitacora_paginada(?, ?)}", page, per_page)
-        # Procesa los resultados.
-        results = [_row_to_dict(cursor, row) for row in cursor.fetchall()]
-        # Obtiene el total de registros para los controles de paginación.
-        cursor.nextset()
-        total = cursor.fetchone()[0]
-        return SimplePagination(results, page, per_page, total)
-    
-
-# RUTA: app/infrastructure/persistence/sqlserver_repository.py
-
-import pyodbc
-import os
-import subprocess
-from dotenv import load_dotenv
-
-# Carga las variables de entorno desde el archivo .env
-load_dotenv()
-
-def _row_to_dict(cursor, row):
-    """Función auxiliar para convertir una fila de base de datos en un diccionario."""
-    if not row or not cursor.description:
-        return None
-    return {col[0]: row[idx] for idx, col in enumerate(cursor.description)}
+        conn = None
+        cursor = None
+        try:
+            conn = get_db_read()
+            cursor = conn.cursor()
+            
+            # Llama a un SP que maneja la paginación de la tabla bitacora.
+            cursor.execute("{CALL sp_listar_bitacora_paginada(?, ?)}", page, per_page)
+            
+            # Procesa los resultados.
+            results = [_row_to_dict(cursor, row) for row in cursor.fetchall()]
+            
+            # Obtiene el total de registros para los controles de paginación.
+            if cursor.nextset():
+                total_row = cursor.fetchone()
+                total = total_row[0] if total_row else 0
+            else:
+                total = len(results)
+                
+            return SimplePagination(results, page, per_page, total)
+            
+        except Exception as e:
+            logger.error(f"Error al listar la bitácora paginada: {str(e)}")
+            # En caso de error, devolvemos una paginación vacía para que no se rompa la pantalla web
+            return SimplePagination([], page, per_page, 0)
+        finally:
+            # SIEMPRE cerrar el cursor
+            if cursor:
+                cursor.close()
 
 class SqlServerBackupRepository:
     # --- SECCIÓN DE BACKUPS SINCRONIZADA CON .ENV ---

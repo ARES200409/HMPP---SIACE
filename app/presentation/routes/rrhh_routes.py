@@ -10,6 +10,7 @@ from app.infrastructure.persistence.planilla_repository import PlanillaRepositor
 from io import BytesIO
 from weasyprint import HTML # Requisito: pip install weasyprint
 from app.infrastructure.persistence.sqlserver_repository import SqlServerPersonalRepository
+import zlib
 # Creamos el Blueprint para el rol de RRHH
 rrhh_bp = Blueprint('rrhh', __name__, url_prefix='/rrhh')
 
@@ -59,10 +60,16 @@ def listar_personal():
 @login_required
 @role_required('RRHH')
 def ver_legajo(personal_id):
-    """Vista de detalle de legajo para RRHH."""
+    """Vista de detalle de legajo para RRHH corrigiendo el ciclo de vida de conexión."""
     legajo_service = current_app.config['LEGAJO_SERVICE']
+    
     try:
+        # 1. Obtener los detalles del personal (Contratos, estudios, etc.)
         legajo_completo = legajo_service.get_personal_details(personal_id, current_user)
+        
+        # 2. Obtener las secciones AQUÍ en la ruta, no en el HTML
+        secciones_list = legajo_service.get_secciones_for_select() or []
+        
     except PermissionError as e:
         flash(str(e), 'danger')
         return redirect(url_for('rrhh.listar_personal'))
@@ -75,16 +82,20 @@ def ver_legajo(personal_id):
         flash('El legajo solicitado no existe.', 'danger')
         return redirect(url_for('rrhh.listar_personal'))
 
+    # 3. Preparar el formulario de documentos
     form_documento = DocumentoForm()
-    secciones = legajo_service.get_secciones_for_select()
-    form_documento.id_seccion.choices = [('0', '-- Seleccione Sección --')] + secciones if secciones else [('0', 'No hay secciones disponibles')]
+    # Mapeamos las opciones del select
+    form_choices = [('0', '-- Seleccione Sección --')] + secciones_list
+    form_documento.id_seccion.choices = form_choices
     form_documento.id_tipo.choices = [('0', '-- Seleccione Tipo --')]
 
+    # 4. Renderizamos enviando todo lo que el HTML necesita
     return render_template(
         'rrhh/ver_legajo_completo.html',
         legajo=legajo_completo,
         form_documento=form_documento,
-        legajo_service=legajo_service,
+        secciones=secciones_list,       # Pasamos la lista ya cargada
+        legajo_service=legajo_service,  # <--- ¡CORRECCIÓN AÑADIDA AQUÍ!
         today=datetime.now().date()
     )
 
@@ -141,11 +152,26 @@ def cambiar_estado_laboral(personal_id):
         cursor.execute("EXEC sp_cambiar_estado_laboral ?, ?", (personal_id, nuevo_estado))
         conn.commit() 
         
+        # ---------------------------------------------------------
+        # 🛡️ BLOQUE DE AUDITORÍA (Cambio de Estado Laboral)
+        # ---------------------------------------------------------
+        try:
+            audit_service = current_app.config.get('AUDIT_SERVICE')
+            if audit_service:
+                audit_service.log(
+                    id_usuario=current_user.id,
+                    modulo='RRHH',
+                    accion='CAMBIAR_ESTADO',
+                    descripcion=f"Actualizó el estado laboral del trabajador ID {personal_id} a: '{nuevo_estado}'."
+                )
+        except Exception as audit_err:
+            current_app.logger.error(f"Error silencioso en auditoría (Cambiar Estado RRHH): {audit_err}")
+        # ---------------------------------------------------------
+        
         return jsonify({'success': True, 'message': 'Estado actualizado en la HMPP.'})
     except Exception as e:
         current_app.logger.error(f"Error al cambiar estado: {e}")
         return jsonify({'success': False, 'message': str(e)}), 500
-    
 
 # app/presentation/routes/rrhh_routes.py
 
@@ -229,6 +255,24 @@ def ingresar_contratacion(personal_id):
                         current_app.logger.error(f"Error en sincronización maestra: {ex}")
                         # No bloqueamos el éxito del contrato si solo falla la sincronización visual
                     
+                    # ---------------------------------------------------------
+                    # 🛡️ BLOQUE DE AUDITORÍA (Ingreso de Contratación)
+                    # ---------------------------------------------------------
+                    try:
+                        audit_service = current_app.config.get('AUDIT_SERVICE')
+                        if audit_service:
+                            nombres_trabajador = getattr(persona, 'nombres', 'Trabajador')
+                            apellidos_trabajador = getattr(persona, 'apellidos', '')
+                            audit_service.log(
+                                id_usuario=current_user.id,
+                                modulo='RRHH',
+                                accion='NUEVO_CONTRATO',
+                                descripcion=f"Registró una nueva contratación y actualizó la ficha maestra de: {nombres_trabajador} {apellidos_trabajador} (ID: {personal_id})."
+                            )
+                    except Exception as audit_err:
+                        current_app.logger.error(f"Error silencioso en auditoría (Nuevo Contrato): {audit_err}")
+                    # ---------------------------------------------------------
+
                     flash(f'¡Éxito! Contratación registrada y ficha maestra de {persona.nombres} actualizada.', 'success')
                     return redirect(url_for('rrhh.listar_personal'))
                 else:
@@ -237,7 +281,6 @@ def ingresar_contratacion(personal_id):
             except Exception as e:
                 current_app.logger.error(f"Error crítico en contratación: {str(e)}")
                 flash(f'Error crítico durante el proceso: {str(e)}', 'danger')
-
 
     return render_template('rrhh/ingresar_contratacion.html', form=form, persona=persona)
 
@@ -402,7 +445,7 @@ def actualizar_detalle_planilla_api():
         cursor = conn.cursor()
         cursor.execute("SELECT neto_pagar, total_ingresos, total_descuentos, monto_pension, aporte_essalud FROM detalle_planilla WHERE id_detalle = ?", (id_detalle,))
         row = cursor.fetchone()
-        conn.close()
+        
         
         if row:
             # CORRECCIÓN JSON: Convertimos Decimal a float para que no falle al enviar
@@ -482,10 +525,26 @@ def eliminar_planilla(id_planilla):
     repo = PlanillaRepository()
     try:
         # 1. Llamamos a la nueva función de borrado lógico
-        # 2. Pasamos el ID del usuario actual para el registro de auditoría
+        # 2. Pasamos el ID del usuario actual para el registro de auditoría interna del repo
         exito = repo.eliminar_planilla_logico(id_planilla, current_user.id)
         
         if exito:
+            # ---------------------------------------------------------
+            # 🛡️ BLOQUE DE AUDITORÍA (Mover Planilla a Papelera)
+            # ---------------------------------------------------------
+            try:
+                audit_service = current_app.config.get('AUDIT_SERVICE')
+                if audit_service:
+                    audit_service.log(
+                        id_usuario=current_user.id,
+                        modulo='RRHH - Planillas',
+                        accion='MOVER_A_PAPELERA',
+                        descripcion=f"El usuario {current_user.username} movió la planilla ID #{id_planilla} a la papelera de reciclaje."
+                    )
+            except Exception as audit_err:
+                current_app.logger.error(f"Error silencioso en auditoría (Eliminar Planilla RRHH): {audit_err}")
+            # ---------------------------------------------------------
+
             # Usamos categoría 'warning' para indicar que no es un borrado permanente
             flash('⚠️ Planilla movida a la papelera correctamente. El Administrador de Escalafón puede restaurarla si es necesario.', 'warning')
         else:
@@ -493,7 +552,7 @@ def eliminar_planilla(id_planilla):
             
     except Exception as e:
         # Registramos el error y avisamos al usuario
-        print(f"Error en ruta eliminar_planilla: {e}")
+        current_app.logger.error(f"Error en ruta eliminar_planilla: {e}")
         flash(f'Ocurrió un error inesperado al procesar la solicitud.', 'danger')
     
     return redirect(url_for('rrhh.gestionar_planillas'))
@@ -641,7 +700,7 @@ def abrir_planilla(id_planilla):
 @role_required('RRHH')
 def imprimir_planilla_oficial(id_planilla):
     from weasyprint import HTML, CSS
-    
+    import zlib
     repo = PlanillaRepository()
     
     # [PASO CLAVE] Actualizamos la bandera en la BD para habilitar el "Ojo" en el listado
@@ -706,6 +765,18 @@ def imprimir_planilla_oficial(id_planilla):
         # Forzar CSS Landscape
         css = CSS(string='@page { size: A4 landscape; }')
         pdf_file = HTML(string=html_str, base_url=current_app.static_folder).write_pdf(stylesheets=[css])
+
+        # ==========================================================
+        # 🔥 NUEVO: GUARDAR EN LA BASE DE DATOS
+        # ==========================================================
+        # Opción A: Guardado simple
+        # repo.guardar_pdf_planilla_oficial(id_planilla, pdf_file)
+        
+        # Opción B: Guardado con COMPRESIÓN (Recomendado para sábanas grandes)
+        
+        pdf_comprimido = zlib.compress(pdf_file, 6)
+        repo.guardar_pdf_planilla_oficial(id_planilla, pdf_comprimido)
+        # ==========================================================
 
         response = make_response(pdf_file)
         response.headers['Content-Type'] = 'application/pdf'
@@ -1021,16 +1092,24 @@ def generar_reporte_anual(id_personal, anio):
             'fecha_inicio': f"{anio}-01-01",
             'fecha_fin_vencimiento': f"{anio}-12-31"
         }
-        repo_personal.add_record_laboral(datos_record, pdf_bytes)
+        # ==========================================================
+        # 🔥 AQUI APLICAMOS LA MAGIA DE LA COMPRESIÓN
+        # ==========================================================
+        import zlib
+        pdf_comprimido = zlib.compress(pdf_bytes, 9)
+        
+        # 1. Guardamos la versión COMPRIMIDA en la base de datos (Escalafón)
+        repo_personal.add_record_laboral(datos_record, pdf_comprimido)
 
+        # 2. Al navegador le mandamos la versión NORMAL (pdf_bytes) para que se vea de inmediato
         return send_file(io.BytesIO(pdf_bytes), mimetype='application/pdf', as_attachment=False, download_name=nombre_archivo)
 
     except Exception as e:
         print(f"🔥 Error Crítico en Récord: {str(e)}", 'danger')
         flash(f'Error técnico: {str(e)}', 'danger')
         return redirect(request.referrer or url_for('rrhh.listar_personal'))
-    finally:
-        conn.close()
+    
+        
 
 
 @rrhh_bp.route('/planillas/<int:id_planilla>/importar-excel', methods=['POST'])

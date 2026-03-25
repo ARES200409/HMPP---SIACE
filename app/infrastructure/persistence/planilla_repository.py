@@ -4,60 +4,68 @@ from datetime import datetime
 class PlanillaRepository:
     
     def get_all_planillas(self):
-        """Lista todas las carpetas de planillas creadas, incluyendo totales financieros."""
-        # Asegúrate de que get_db_read esté importado al inicio del archivo
-        # from app.database import get_db_read
+        """
+        Lista todas las carpetas de planillas creadas, incluyendo totales financieros.
+        CORREGIDO: Implementación de context manager para el cursor y protección de conexión.
+        """
+        from app.database import get_db_read
         
+        # 1. Obtenemos la conexión compartida (gestionada por Flask g)
         conn = get_db_read()
-        cursor = conn.cursor()
+        
         try:
-            query = """
-                SELECT 
-                    p.id_planilla, 
-                    p.anio, 
-                    p.mes, 
-                    p.tipo_planilla, 
-                    p.estado, 
-                    p.fecha_apertura,
-                    p.pdf_generado,  -- <--- ¡IMPORTANTE! Agregado para habilitar el Ojo Verde
-                    
-                    -- 1. Total de Trabajadores
-                    (SELECT COUNT(*) FROM detalle_planilla d WHERE d.id_planilla = p.id_planilla) as total_trabajadores,
-                    
-                    -- 2. Total Neto (Lo que reciben los trabajadores)
-                    (SELECT SUM(ISNULL(neto_pagar, 0)) FROM detalle_planilla d WHERE d.id_planilla = p.id_planilla) as total_monto,
+            # 2. 🛡️ Usamos 'with' para el cursor: se cierra solo al salir del bloque,
+            # lo cual es vital para que la página no se bloquee por "Connection Busy".
+            with conn.cursor() as cursor:
+                query = """
+                    SELECT 
+                        p.id_planilla, 
+                        p.anio, 
+                        p.mes, 
+                        p.tipo_planilla, 
+                        p.estado, 
+                        p.fecha_apertura,
+                        p.pdf_generado, 
+                        
+                        -- 1. Total de Trabajadores en esta planilla
+                        (SELECT COUNT(*) FROM detalle_planilla d WHERE d.id_planilla = p.id_planilla) as total_trabajadores,
+                        
+                        -- 2. Total Neto (Lo que percibe el personal)
+                        (SELECT SUM(ISNULL(neto_pagar, 0)) FROM detalle_planilla d WHERE d.id_planilla = p.id_planilla) as total_monto,
 
-                    -- 3. Total Aportes HMPP (Essalud + SCTR + CTS)
-                    (SELECT SUM(ISNULL(aporte_essalud, 0) + ISNULL(sctr_onp, 0) + ISNULL(sctr, 0) + ISNULL(cts, 0)) 
-                     FROM detalle_planilla d WHERE d.id_planilla = p.id_planilla) as total_aportes
+                        -- 3. Total Aportes Empleador (Essalud + SCTR + CTS)
+                        (SELECT SUM(ISNULL(aporte_essalud, 0) + ISNULL(sctr_onp, 0) + ISNULL(sctr, 0) + ISNULL(cts, 0)) 
+                         FROM detalle_planilla d WHERE d.id_planilla = p.id_planilla) as total_aportes
 
-                FROM planillas p
-                WHERE p.eliminado = 0
-                ORDER BY p.anio DESC, p.mes DESC
-            """
-            cursor.execute(query)
-            
-            columns = [column[0] for column in cursor.description]
-            results = []
-            for row in cursor.fetchall():
-                # Creamos el diccionario con los datos crudos
-                row_dict = dict(zip(columns, row))
+                    FROM planillas p
+                    WHERE p.eliminado = 0
+                    ORDER BY p.anio DESC, p.mes DESC
+                """
+                cursor.execute(query)
                 
-                # Conversión de seguridad: Aseguramos que pdf_generado sea True/False para Jinja
-                # (A veces SQL devuelve 1 o 0, y Python necesita evaluar el booleano explícito)
-                if 'pdf_generado' in row_dict:
-                    row_dict['pdf_generado'] = bool(row_dict['pdf_generado'])
+                # Mapeo de nombres de columnas
+                columns = [column[0] for column in cursor.description]
+                results = []
                 
-                results.append(row_dict)
-            
-            return results
-            
+                for row in cursor.fetchall():
+                    # Convertimos cada fila en un diccionario Python
+                    row_dict = dict(zip(columns, row))
+                    
+                    # 🛡️ Blindaje para Jinja2: Aseguramos que el valor sea booleano puro
+                    if 'pdf_generado' in row_dict:
+                        row_dict['pdf_generado'] = bool(row_dict['pdf_generado'])
+                    
+                    results.append(row_dict)
+                
+                return results
+                
         except Exception as e:
-            print(f"Error en get_all_planillas: {e}")
+            # Registramos el error en la consola para depuración
+            print(f"❌ Error en get_all_planillas: {str(e)}")
             return []
-        finally:
-            cursor.close()
-            # conn.close()  <-- ELIMINADO: Dejamos la conexión abierta para evitar errores en middlewares
+            
+        # ✅ IMPORTANTE: No incluimos conn.close(). 
+        # Al igual que en las otras funciones, Flask cerrará la conexión al terminar el request.
 
     def crear_planilla_mensual(self, anio, mes, tipo_texto):
         """
@@ -172,8 +180,7 @@ class PlanillaRepository:
             conn.rollback()
             print(f"⚠️ ERROR al crear planilla: {e}")
             raise e
-        finally:
-            conn.close()
+        
 
     def get_detalle_planilla(self, id_planilla):
         conn = get_db_read()
@@ -500,13 +507,15 @@ class PlanillaRepository:
             conn.rollback()
             print(f"🔥 Error al mover a papelera: {e}")
             return False
-        finally:
-            conn.close()
+        
 
     def guardar_pdf_boleta(self, id_detalle, pdf_bytes):
         """
         Guarda el binario del PDF en la base de datos.
         """
+        import zlib
+        from app.database import get_db_write
+        pdf_comprimido = zlib.compress(pdf_bytes, 9)
         conn = get_db_write()
         cursor = conn.cursor()
         try:
@@ -528,6 +537,8 @@ class PlanillaRepository:
 
     def obtener_pdf_guardado(self, id_detalle):
         """Devuelve los bytes del PDF guardado en BD."""
+        import zlib
+        from app.database import get_db_read
         conn = get_db_read()
         cursor = conn.cursor()
         try:
@@ -535,10 +546,15 @@ class PlanillaRepository:
             cursor.execute(query, (id_detalle,))
             row = cursor.fetchone()
             if row and row[0]:
-                return row[0] # Retorna los bytes
+                try:
+                    # 🔥 Inflamos el PDF de vuelta a la normalidad
+                    return zlib.decompress(row[0])
+                except zlib.error:
+                    # Si ya tenías boletas viejas sin comprimir, las lee igual
+                    return row[0]
             return None
         finally:
-            conn.close()
+            cursor.close()
 
 
     def cerrar_planilla(self, id_planilla):
@@ -554,8 +570,7 @@ class PlanillaRepository:
             print(f"Error cerrando planilla: {e}")
             conn.rollback()
             return False
-        finally:
-            conn.close()
+        
 
 
     def abrir_planilla(self, id_planilla):
@@ -571,9 +586,7 @@ class PlanillaRepository:
             print(f"Error abriendo planilla: {e}")
             conn.rollback()
             return False
-        finally:
-            conn.close()
-
+        
     def obtener_planilla_por_id(self, id_planilla):
         conn = get_db_read()
         cursor = conn.cursor()
@@ -601,57 +614,86 @@ class PlanillaRepository:
             cursor.close()
 
     def obtener_conteo_sin_contrato(self):
-        """Cuenta trabajadores activos que no tienen registros en la tabla contratos."""
-        # 🚀 CLAVE: Usamos get_db_read() siempre para tener una conexión nueva
+        """
+        Cuenta trabajadores activos que no tienen registros en la tabla contratos.
+        CORREGIDO: Usa el cursor de forma segura sin matar la conexión global.
+        """
         from app.database import get_db_read
+        
+        # 1. Obtenemos la conexión compartida del request
         conn = get_db_read()
-        cursor = conn.cursor()
+        
         try:
-            query = """
-                SELECT COUNT(*) 
-                FROM personal p 
-                WHERE p.activo = 1 
-                AND NOT EXISTS (SELECT 1 FROM contratos WHERE id_personal = p.id_personal)
-            """
-            cursor.execute(query)
-            resultado = cursor.fetchone()
-            return resultado[0] if resultado else 0
+            # 2. 🛡️ El bloque 'with' cierra el cursor automáticamente al terminar el bloque,
+            # pero NO CIERRA la conexión (conn), permitiendo que otros componentes la usen.
+            with conn.cursor() as cursor:
+                query = """
+                    SELECT COUNT(*) 
+                    FROM personal p 
+                    WHERE p.activo = 1 
+                    AND NOT EXISTS (SELECT 1 FROM contratos WHERE id_personal = p.id_personal)
+                """
+                cursor.execute(query)
+                resultado = cursor.fetchone()
+                
+                # Devolvemos el número (ej: 5)
+                return resultado[0] if resultado else 0
+                
         except Exception as e:
-            # Este es el error que ves en tu terminal negra
-            print(f"⚠️ Error silencioso en contador: {e}") 
+            # Si hay un error, lo vemos en la consola negra pero devolvemos 0 
+            # para que la barra lateral no rompa toda la página web.
+            print(f"⚠️ Error en contador de contratos: {e}") 
             return 0
-        finally:
-            # Cerramos solo después de haber guardado el resultado en la variable
-            cursor.close()
-            conn.close()
+            
+        # ✅ NOTA: No hay bloque 'finally' cerrando la conexión. 
+        # Flask se encargará de cerrarla al final de la carga de la página.
+            
 
     def obtener_pendientes_contrato(self):
-        """Devuelve la lista detallada de trabajadores activos sin contrato."""
+        """
+        Devuelve la lista detallada de trabajadores activos sin contrato.
+        CORREGIDO: Usa context manager para el cursor y protege la conexión global.
+        """
         from app.database import get_db_read
+        
+        # 1. Obtenemos la conexión compartida (gestionada por Flask g)
         conn = get_db_read()
-        cursor = conn.cursor()
+        
         try:
-            # ✅ CORREGIDO: Usamos 'apellidos' porque así se llama en tu base de datos
-            query = """
-                SELECT id_personal, dni, nombres, apellidos 
-                FROM personal p 
-                WHERE p.activo = 1 
-                  AND NOT EXISTS (SELECT 1 FROM contratos WHERE id_personal = p.id_personal)
-            """
-            cursor.execute(query)
-            
-            columns = [column[0] for column in cursor.description]
-            results = []
-            for row in cursor.fetchall():
-                results.append(dict(zip(columns, row)))
+            # 2. 🛡️ Usamos 'with' para el cursor: se cierra solo al terminar,
+            # pero deja la conexión 'conn' abierta para los demás componentes.
+            with conn.cursor() as cursor:
+                # Query optimizada para traer datos básicos de los pendientes
+                query = """
+                    SELECT id_personal, dni, nombres, apellidos 
+                    FROM personal p 
+                    WHERE p.activo = 1 
+                      AND NOT EXISTS (
+                          SELECT 1 FROM contratos 
+                          WHERE id_personal = p.id_personal
+                      )
+                    ORDER BY apellidos ASC
+                """
+                cursor.execute(query)
                 
-            return results
+                # Mapeo dinámico de columnas a diccionario
+                columns = [column[0] for column in cursor.description]
+                results = []
+                
+                for row in cursor.fetchall():
+                    results.append(dict(zip(columns, row)))
+                    
+                return results
+                
         except Exception as e:
-            print(f"⚠️ Error obteniendo lista de pendientes: {e}")
+            # Registramos el error en la consola pero devolvemos lista vacía
+            # para que la interfaz de usuario no se rompa.
+            print(f"⚠️ Error en repositorio al obtener lista de pendientes: {e}")
             return []
-        finally:
-            cursor.close()
-            conn.close()
+            
+        # ✅ IMPORTANTE: No incluimos conn.close(). 
+        # La conexión debe seguir viva para que el resto de la página cargue.
+            
 
     def get_reporte_general_data(self, id_planilla):
         """Obtiene TODOS los datos detallados para el reporte PDF (Sábana de Planilla)."""
@@ -744,7 +786,7 @@ class PlanillaRepository:
             return []
         finally:
             cursor.close()
-            conn.close()
+            
 
     def get_planilla_header(self, id_planilla):
         """
@@ -770,7 +812,7 @@ class PlanillaRepository:
             query = "UPDATE planillas SET pdf_generado = 1 WHERE id_planilla = ?"
             cursor.execute(query, (id_planilla,))
             conn.commit()
-            conn.close()
+            
             
             return True
         except Exception as e:
@@ -780,18 +822,17 @@ class PlanillaRepository:
     # --- MÉTODOS DE SEGURIDAD DINÁMICA ---
 
     def obtener_clave_dinamica(self):
-        """Obtiene la clave actual desde la base de datos."""
+        """Obtiene la clave actual desde la base de datos sin cerrar la conexión."""
+        from app.database import get_db_read
+        conn = get_db_read()
         try:
-            from app.database import get_db_read
-            conn = get_db_read()
-            cursor = conn.cursor()
-            cursor.execute("SELECT TOP 1 clave_actual FROM configuracion_seguridad ORDER BY id DESC")
-            row = cursor.fetchone()
-            conn.close()
-            return row[0] if row else "ERROR-CLAVE"
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT TOP 1 clave_actual FROM configuracion_seguridad ORDER BY id DESC")
+                row = cursor.fetchone()
+                return row[0] if row else "ERROR-CLAVE"
         except Exception as e:
-            print(f"Error obteniendo clave: {e}")
-            return None
+            print(f"❌ Error obteniendo clave: {e}")
+            return "ERROR-CLAVE"
 
     def generar_nueva_clave_dinamica(self):
         """Genera una nueva clave aleatoria y la guarda."""
@@ -816,7 +857,7 @@ class PlanillaRepository:
             cursor.execute("INSERT INTO configuracion_seguridad (clave_actual) VALUES (?)", (clave_formateada,))
             
             conn.commit()
-            conn.close()
+            #conn.close()
             return clave_formateada
         except Exception as e:
             print(f"Error generando clave: {e}")
@@ -852,17 +893,17 @@ class PlanillaRepository:
             return False
         finally:
             cursor.close()
-            conn.close()
+            #conn.close()
 
     def obtener_planillas_eliminadas(self):
         """
-        Trae planillas eliminadas de AMBAS tablas (RRHH e Históricas).
+        Trae planillas eliminadas (Soft Delete) de AMBAS tablas (RRHH e Históricas).
         Mapea los datos para que sean 100% compatibles con el HTML actual.
         """
         conn = get_db_read()
         cursor = conn.cursor()
         try:
-            # 🚀 SQL UNIFICADO CON PARCHE DE SEGURIDAD
+            # 🚀 SQL UNIFICADO: Busca las planillas marcadas como eliminadas/inactivas
             query = """
                 -- 1. PLANILLAS MODERNAS (Módulo RRHH)
                 SELECT 
@@ -879,8 +920,10 @@ class PlanillaRepository:
                 UNION ALL
 
                 -- 2. PLANILLAS HISTÓRICAS (Módulo Escalafón / Bóveda)
+                -- Aquí se muestran las que hemos "apagado" con activo = 0
                 SELECT 
                     ph.id_planilla_historica as id_planilla, 
+                    -- Convertimos mes de texto a número para mantener consistencia visual con RRHH
                     CASE ph.mes 
                         WHEN 'Enero' THEN 1 WHEN 'Febrero' THEN 2 WHEN 'Marzo' THEN 3
                         WHEN 'Abril' THEN 4 WHEN 'Mayo' THEN 5 WHEN 'Junio' THEN 6
@@ -889,12 +932,14 @@ class PlanillaRepository:
                         ELSE 0
                     END as mes,
                     ph.anio, 
-                    'HISTÓRICA (' + ISNULL(ph.cargo_historico, 'S/N') + ')' as tipo_planilla, 
-                    -- 🛡️ PARCHE: Intentamos usar la columna fecha_eliminacion, si falla usamos la fecha actual
-                    GETDATE() as fecha_eliminacion, 
+                    -- Agregamos el nombre del trabajador para saber de quién es la planilla histórica
+                    'HISTÓRICA (' + ISNULL(per.nombres + ' ' + per.apellidos, 'S/N') + ')' as tipo_planilla, 
+                    -- Usamos la columna real de fecha_eliminacion de tu base de datos
+                    ph.fecha_eliminacion, 
                     ph.monto_neto as monto_total,
                     'HISTORICA' as origen
                 FROM Planillas_Historicas ph
+                INNER JOIN personal per ON ph.id_personal = per.id_personal
                 WHERE ph.activo = 0
 
                 ORDER BY fecha_eliminacion DESC
@@ -913,8 +958,11 @@ class PlanillaRepository:
             print(f"❌ ERROR CRÍTICO EN PAPELERA: {str(e)}")
             return []
         finally:
-            cursor.close()
-            conn.close()
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
+            
 
     def eliminar_planilla_permanente(self, id_planilla, origen='MODERNA'):
         """
@@ -951,7 +999,7 @@ class PlanillaRepository:
             return False
         finally:
             cursor.close()
-            conn.close()
+            
 
     def vaciar_papelera_planillas(self):
         """
@@ -989,7 +1037,7 @@ class PlanillaRepository:
             return False
         finally:
             cursor.close()
-            conn.close()
+            
 
 
     def obtener_resumen_pagos_anual(self, id_personal, anio):
@@ -1049,8 +1097,7 @@ class PlanillaRepository:
         except Exception as e:
             print(f"❌ Error en query anual: {e}")
             return []
-        finally:
-            conn.close()
+        
 
     # ... (tu código anterior hasta obtener_resumen_pagos_anual) ...
     # PEGA ESTO JUSTO DESPUÉS DE obtener_resumen_pagos_anual
@@ -1542,3 +1589,64 @@ class PlanillaRepository:
             raise e 
         finally:
             cursor.close()
+
+    def guardar_pdf_planilla_oficial(self, id_planilla, pdf_bytes):
+        """
+        Guarda el binario de la Planilla General (Sábana) comprimido en la cabecera.
+        """
+        import zlib  # 🔥 Importamos la librería de compresión
+        from app.database import get_db_write
+        
+        # Comprimimos los bytes antes de abrir la conexión (Nivel 6 es el balance ideal)
+        pdf_comprimido = zlib.compress(pdf_bytes, 9)
+        
+        conn = get_db_write()
+        cursor = conn.cursor()
+        try:
+            # Guardamos el PDF COMPRIMIDO y nos aseguramos de que pdf_generado sea 1
+            query = """
+                UPDATE planillas 
+                SET archivo_pdf = ?, 
+                    pdf_generado = 1 
+                WHERE id_planilla = ?
+            """
+            cursor.execute(query, (pdf_comprimido, id_planilla))
+            conn.commit()
+            return True
+        except Exception as e:
+            conn.rollback()
+            print(f"❌ Error guardando Planilla General en BD: {e}")
+            return False
+        finally:
+            cursor.close()
+            # 🔥 OJO: Eliminamos 'conn.close()' para que Flask y tu app no se caigan
+
+    def obtener_pdf_planilla_oficial(self, id_planilla):
+        """
+        Recupera y descomprime los bytes de la planilla general guardada.
+        """
+        import zlib
+        from app.database import get_db_read
+        
+        conn = get_db_read()
+        cursor = conn.cursor()
+        try:
+            query = "SELECT archivo_pdf FROM planillas WHERE id_planilla = ?"
+            cursor.execute(query, (id_planilla,))
+            row = cursor.fetchone()
+            
+            if row and row[0]:
+                try:
+                    # 🔥 Descomprimimos los bytes (Los "inflamos" de vuelta a PDF normal)
+                    return zlib.decompress(row[0])
+                except zlib.error:
+                    # Blindaje: Si por alguna razón el archivo se guardó sin comprimir antes, 
+                    # lo devuelve tal cual para que no se rompa la vista.
+                    return row[0]
+            return None
+        except Exception as e:
+            print(f"❌ Error al obtener PDF oficial de BD: {e}")
+            return None
+        finally:
+            cursor.close()
+            # 🔥 OJO: Eliminamos 'conn.close()' aquí también

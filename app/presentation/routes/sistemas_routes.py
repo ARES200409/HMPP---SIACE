@@ -107,6 +107,22 @@ def crear_usuario():
             flash(mensaje, tipo)
             
             if tipo == 'success':
+                # ---------------------------------------------------------
+                # 🛡️ BLOQUE DE AUDITORÍA (Creación de Usuario)
+                # ---------------------------------------------------------
+                try:
+                    audit_service = current_app.config.get('AUDIT_SERVICE')
+                    if audit_service:
+                        audit_service.log(
+                            id_usuario=current_user.id,
+                            modulo='Gestión de Usuarios',
+                            accion='CREAR_USUARIO',
+                            descripcion=f"Creó un nuevo acceso para el usuario '{datos_usuario.get('username')}' con correo '{datos_usuario.get('email')}'."
+                        )
+                except Exception as audit_err:
+                    current_app.logger.error(f"Error en auditoría (Crear Usuario): {audit_err}")
+                # ---------------------------------------------------------
+                
                 # Redirección exitosa al panel de gestión
                 return redirect(url_for('sistemas.gestionar_usuarios'))
             else:
@@ -165,6 +181,23 @@ def editar_usuario(user_id):
                 if cambios_realizados:
                     items = ' y '.join(cambios_realizados)
                     flash(f'Se actualizaron correctamente: {items}.', 'success')
+                    
+                    # ---------------------------------------------------------
+                    # 🛡️ BLOQUE DE AUDITORÍA (Edición de Usuario)
+                    # ---------------------------------------------------------
+                    try:
+                        audit_service = current_app.config.get('AUDIT_SERVICE')
+                        if audit_service:
+                            audit_service.log(
+                                id_usuario=current_user.id,
+                                modulo='Gestión de Usuarios',
+                                accion='EDITAR_USUARIO',
+                                descripcion=f"Modificó los siguientes datos del usuario ID {user_id}: {items}."
+                            )
+                    except Exception as audit_err:
+                        current_app.logger.error(f"Error silencioso en auditoría (Editar Usuario): {audit_err}")
+                    # ---------------------------------------------------------
+                    
                 elif not cambios_fallidos:
                     flash('No se realizaron cambios.', 'info')
                 
@@ -215,17 +248,29 @@ def reset_password(user_id):
         cursor.execute("UPDATE usuarios SET password_hash = ? WHERE id_usuario = ?", (new_password_hash, user_id))
         conn.commit()
         
-        # (Opcional) Registrar en auditoría si tienes el servicio
-        # current_app.config['AUDIT_SERVICE'].log(...)
+        # ---------------------------------------------------------
+        # 🛡️ BLOQUE DE AUDITORÍA (Reset de Contraseña)
+        # ---------------------------------------------------------
+        try:
+            audit_service = current_app.config.get('AUDIT_SERVICE')
+            if audit_service:
+                audit_service.log(
+                    id_usuario=current_user.id,
+                    modulo='Gestión de Usuarios',
+                    accion='RESET_PASSWORD',
+                    descripcion=f"Restableció la contraseña del usuario '{username_dni}' (ID: {user_id}) a su valor por defecto (DNI)."
+                )
+        except Exception as audit_err:
+            current_app.logger.error(f"Error silencioso en auditoría (Reset Password): {audit_err}")
+        # ---------------------------------------------------------
         
         return jsonify({'success': True, 'message': f'Contraseña restablecida exitosamente al DNI: {username_dni}'})
         
     except Exception as e:
         conn.rollback()
         return jsonify({'success': False, 'message': f'Error interno: {str(e)}'}), 500
-    finally:
-        conn.close()
-
+    #finally:
+        #conn.close()
 
 @sistemas_bp.route('/usuarios/cambiar_estado/<int:personal_id>', methods=['POST'])
 @login_required

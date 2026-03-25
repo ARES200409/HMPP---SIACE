@@ -89,7 +89,7 @@ class LegajoService:
             
             cursor.execute(f"SELECT COUNT(*) FROM personal {where_sql}", params)
             total = cursor.fetchone()[0]
-            cursor.close()
+            
 
             from app.presentation.routes.legajo_routes import RecordPagination
             return RecordPagination(items, page, per_page, total)
@@ -167,9 +167,7 @@ class LegajoService:
         except Exception as e:
             print(f"Error extrayendo históricos: {e}")
             legajo['historico_laboral'] = []
-        finally:
-            cursor.close()
-            conn.close()
+        
 
         return legajo
 
@@ -361,7 +359,9 @@ class LegajoService:
             return None
 
     def upload_document_to_personal(self, form_data, file_storage, current_user_id):
-        """Gestiona la validación y subida de un nuevo documento."""
+        """Gestiona la validación, compresión y subida de un nuevo documento."""
+        import zlib  # <-- Importamos la librería de compresión nativa
+        
         if not file_storage or not file_storage.filename:
             raise ValueError("No se proporcionó ningún archivo para subir.")
 
@@ -371,6 +371,7 @@ class LegajoService:
         if '.' not in filename or filename.rsplit('.', 1)[1].lower() not in allowed_extensions:
             raise ValueError(f"Tipo de archivo no permitido. Solo se aceptan: {', '.join(allowed_extensions)}")
 
+        # 1. Leemos el archivo original pesado
         file_bytes = file_storage.read()
         if len(file_bytes) > current_app.config['MAX_CONTENT_LENGTH']:
             max_size_mb = current_app.config['MAX_CONTENT_LENGTH'] / (1024 * 1024)
@@ -378,19 +379,41 @@ class LegajoService:
         
         file_storage.seek(0)
         
+        # 2. Generamos el hash del archivo ORIGINAL (para mantener la validez legal/auditoría)
         file_hash = hashlib.sha256(file_bytes).hexdigest()
+
+        # 3. 🔥 APLICAMOS LA MAGIA DE COMPRESIÓN (Nivel 9: Máximo)
+        try:
+            file_bytes_optimizado = zlib.compress(file_bytes, 9)
+            print(f"📦 Optimizando {filename}: De {len(file_bytes)} bytes a {len(file_bytes_optimizado)} bytes.")
+        except Exception as e:
+            # Si falla (ej. el archivo está corrupto o tiene un formato raro), guardamos el original
+            print(f"⚠️ No se pudo comprimir {filename}: {e}")
+            file_bytes_optimizado = file_bytes
         
         doc_data = form_data.copy()
         doc_data['nombre_archivo'] = filename
         doc_data['hash_archivo'] = file_hash
         id_personal = doc_data.get('id_personal')
         
-        # Si no se proporciona fecha de emisión, usar la fecha actual
-        if not doc_data.get('fecha_emision'):
-            doc_data['fecha_emision'] = datetime.now().date()
-
-        self._personal_repo.add_document(doc_data, file_bytes)
+        # 🚀 DEFENSA B BLINDADA: Asegurar que SQL Server reciba una fecha válida
+        fecha = doc_data.get('fecha_emision')
         
+        # Evaluamos si viene vacía, nula, o como texto en blanco ('') desde el formulario HTML
+        if not fecha or str(fecha).strip() == '' or str(fecha).strip() == 'None':
+            # Si está vacía, forzamos la fecha de hoy en el formato exacto que pide SQL Server (AAAA-MM-DD)
+            doc_data['fecha_emision'] = datetime.now().strftime('%Y-%m-%d')
+        else:
+            # Si sí enviaron una fecha válida, aseguramos que viaje como texto seguro para SQL
+            if hasattr(fecha, 'strftime'):
+                doc_data['fecha_emision'] = fecha.strftime('%Y-%m-%d')
+            else:
+                doc_data['fecha_emision'] = str(fecha)
+
+        # 4. Guardamos en la Base de Datos EL ARCHIVO YA COMPRIMIDO (file_bytes_optimizado)
+        self._personal_repo.add_document(doc_data, file_bytes_optimizado)
+        
+        # 5. Registramos la acción en la Auditoría
         self._audit_service.log(
             current_user_id,
             'Documentos',
@@ -818,8 +841,7 @@ class LegajoService:
         except Exception as e:
             print(f"--- ERROR en get_record_laboral: {e} ---")
             return []
-        finally:
-            conn.close()
+        
 
     # 2. Función NUEVA para DESCARGAR EL PDF (Binario)
     def get_archivo_record_laboral(self, id_record):
@@ -833,8 +855,7 @@ class LegajoService:
         except Exception as e:
             print(f"Error obteniendo binario récord: {e}")
             return None
-        finally:
-            conn.close()
+        
 
 
     def get_info_perfil_por_usuario(self, id_usuario, dni_usuario=None):
@@ -876,8 +897,7 @@ class LegajoService:
         except Exception as e:
             print(f"Error buscando perfil: {e}")
             return None
-        finally:
-            conn.close()
+        
 
     # En app/application/services/legajo_service.py
 
@@ -924,5 +944,4 @@ class LegajoService:
             conn.rollback()
             logger.error(f"Error en sincronización: {e}")
             return False, f"Error técnico: {str(e)}"
-        finally:
-            conn.close()
+        

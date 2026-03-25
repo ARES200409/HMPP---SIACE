@@ -17,6 +17,7 @@ from datetime import datetime
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash
 from app.database import get_db_read
+import zlib
 
 
 legajo_bp = Blueprint('legajo', __name__, url_prefix='/legajo')
@@ -55,15 +56,42 @@ def carga_masiva_personal():
         file_storage = form.excel_file.data
         try:
             legajo_service = current_app.config['LEGAJO_SERVICE']
+            
+            # Ejecutamos el proceso de carga masiva
             resultado = legajo_service.process_bulk_upload(file_storage, current_user.id)
             
+            # 🛡️ BLOQUE DE AUDITORÍA: Registro de Importación Masiva
+            try:
+                audit_service = current_app.config.get('AUDIT_SERVICE')
+                if audit_service:
+                    # Capturamos el nombre del archivo subido
+                    nombre_archivo = file_storage.filename
+                    exitos = resultado.get('exitosos', 0)
+                    fallos = resultado.get('fallidos', 0)
+                    
+                    # Mensaje descriptivo para la bitácora
+                    msj_auditoria = (f"Carga Masiva desde Excel: '{nombre_archivo}'. "
+                                     f"Resultado: {exitos} exitosos, {fallos} fallidos.")
+                    
+                    audit_service.log(
+                        id_usuario=current_user.id,
+                        modulo='Carga Masiva',
+                        accion='IMPORTAR_EXCEL',
+                        descripcion=msj_auditoria
+                    )
+            except Exception as audit_err:
+                current_app.logger.error(f"Error silencioso en auditoría (Carga Masiva): {audit_err}")
+
+            # Mensajes de retroalimentación al usuario
             flash(f"Proceso de carga masiva completado. Registros exitosos: {resultado['exitosos']}", 'success')
+            
             if resultado['fallidos'] > 0:
                 # Si hubo errores, se muestran en un mensaje separado.
                 errores_str = "; ".join(resultado['errores'])
                 flash(f"Registros fallidos: {resultado['fallidos']}. Detalles: {errores_str}", 'danger')
 
             return redirect(url_for('legajo.listar_personal'))
+
         except Exception as e:
             from app.utils.error_handler import registrar_error_automatico
             registrar_error_automatico(e)
@@ -77,11 +105,27 @@ def carga_masiva_personal():
 @role_required('AdministradorLegajos')
 def descargar_plantilla_carga_masiva():
     legajo_service = current_app.config['LEGAJO_SERVICE']
-    # Se obtienen las unidades para las validaciones de datos en Excel.
+    
+    # 1. Se obtienen las unidades para las validaciones de datos en Excel.
     unidades = legajo_service.get_unidades_for_select()
     
+    # 2. Se genera el flujo del archivo Excel
     excel_stream = legajo_service.generate_bulk_upload_template(unidades)
     
+    # 🛡️ BLOQUE DE AUDITORÍA: Registro de descarga de herramienta de carga
+    try:
+        audit_service = current_app.config.get('AUDIT_SERVICE')
+        if audit_service:
+            audit_service.log(
+                id_usuario=current_user.id,
+                modulo='Carga Masiva',
+                accion='DESCARGAR_PLANTILLA',
+                descripcion=f"El usuario {current_user.username} descargó la plantilla oficial para carga masiva de personal."
+            )
+    except Exception as audit_err:
+        current_app.logger.error(f"Error silencioso en auditoría (Descarga Plantilla): {audit_err}")
+
+    # 3. Retorno del archivo al navegador
     return send_file(
         excel_stream,
         download_name="plantilla_carga_masiva_personal.xlsx",
@@ -92,15 +136,40 @@ def descargar_plantilla_carga_masiva():
 from app.infrastructure.persistence.planilla_repository import PlanillaRepository
 @legajo_bp.route('/seguridad/rotar_clave', methods=['POST'])
 @login_required
-@role_required('AdministradorLegajos', 'Sistemas') # Solo sistemas puede tocar esto
+@role_required('AdministradorLegajos', 'Sistemas')
 def rotar_clave_seguridad():
-    repo = PlanillaRepository() # Importar repositorio si hace falta
-    nueva_clave = repo.generar_nueva_clave_dinamica()
-    if nueva_clave:
-        flash(f'Clave de seguridad actualizada: {nueva_clave}', 'success')
-    else:
-        flash('Error al generar clave.', 'danger')
-    return redirect(url_for('legajo.gestionar_token')) # Vuelve al inicio
+    # Asumimos que PlanillaRepository ya está importado en el archivo
+    repo = PlanillaRepository() 
+    
+    try:
+        # 1. Ejecutar la lógica de negocio para generar la nueva clave
+        nueva_clave = repo.generar_nueva_clave_dinamica()
+        
+        if nueva_clave:
+            # 🛡️ BLOQUE DE AUDITORÍA: Rotación de Clave de Seguridad
+            try:
+                audit_service = current_app.config.get('AUDIT_SERVICE')
+                if audit_service:
+                    # Registramos quién hizo el cambio y sobre qué módulo sensible
+                    audit_service.log(
+                        id_usuario=current_user.id,
+                        modulo='Seguridad',
+                        accion='ROTAR_CLAVE',
+                        descripcion=f"El usuario {current_user.username} generó una NUEVA clave dinámica de seguridad para el acceso a planillas históricas."
+                    )
+            except Exception as audit_err:
+                # Log de error interno para el desarrollador, no bloquea al usuario
+                current_app.logger.error(f"Error silencioso en auditoría (Rotar Clave): {audit_err}")
+
+            flash(f'Clave de seguridad actualizada: {nueva_clave}', 'success')
+        else:
+            flash('Error al generar clave en la base de datos.', 'danger')
+            
+    except Exception as e:
+        current_app.logger.error(f"Error crítico al rotar clave de seguridad: {e}")
+        flash('Ocurrió un fallo técnico al intentar rotar la clave.', 'danger')
+
+    return redirect(url_for('legajo.gestionar_token'))
 
 
 @legajo_bp.route('/seguridad/token')
@@ -236,6 +305,7 @@ def ver_legajo(personal_id):
         legajo_service = current_app.config['LEGAJO_SERVICE']
         # Seguridad: Pasar el usuario actual al servicio para la validación de permisos (IDOR).
         legajo_completo = legajo_service.get_personal_details(personal_id, current_user)
+        
     except PermissionError as e:
         # Seguridad: Capturar el error de permiso y mostrar un mensaje claro.
         flash(str(e), 'danger')
@@ -245,9 +315,28 @@ def ver_legajo(personal_id):
         flash("Ocurrió un error al cargar el legajo.", "danger")
         return redirect(url_for('legajo.listar_personal'))
     
+    # Validamos que el legajo exista antes de auditar y renderizar
     if not legajo_completo or not legajo_completo.get('personal'):
         flash('El legajo solicitado no existe.', 'danger')
         return redirect(url_for('legajo.listar_personal'))
+
+    # 🛡️ BLOQUE DE AUDITORÍA: Registro de Acceso al Expediente
+    try:
+        audit_service = current_app.config.get('AUDIT_SERVICE')
+        if audit_service:
+            persona = legajo_completo['personal']
+            nombre_full = f"{persona.get('nombres', '')} {persona.get('apellidos', '')}"
+            dni_persona = persona.get('dni', 'N/A')
+            
+            # Registramos quién miró el expediente de quién
+            audit_service.log(
+                id_usuario=current_user.id,
+                modulo='Personal',
+                accion='CONSULTA_DETALLE',
+                descripcion=f"Consultó el expediente detallado de {nombre_full} (DNI: {dni_persona}). ID: {personal_id}"
+            )
+    except Exception as audit_err:
+        current_app.logger.error(f"Error silencioso en auditoría (Ver Legajo): {audit_err}")
         
     form_documento = DocumentoForm()
     # Se asegura de que la lista de opciones no esté vacía antes de añadir
@@ -300,24 +389,42 @@ def listar_personal():
 def crear_personal():
     form = PersonalForm()
     legajo_service = current_app.config['LEGAJO_SERVICE']
+    # Cargamos las unidades para el combo select
     form.id_unidad.choices = [('0', '-- Seleccione Unidad --')] + legajo_service.get_unidades_for_select()
     
     if form.validate_on_submit():
         try:
-            # 1. Crear Personal y Usuario
+            # 1. Crear Personal y Usuario en la Base de Datos
             new_personal_id = legajo_service.register_new_personal(form.data, current_user.id)
             
+            # 🛡️ BLOQUE DE AUDITORÍA INYECTADO
+            try:
+                # Recuperamos el repositorio de auditoría desde la configuración
+                audit_service = current_app.config.get('AUDIT_SERVICE')
+                if audit_service:
+                    dni_nuevo = form.dni.data
+                    nombre_completo = f"{form.nombres.data} {form.apellidos.data}"
+                    
+                    audit_service.log_event(
+                        id_usuario=current_user.id,
+                        modulo='Legajos',
+                        accion='CREAR_PERSONAL',
+                        descripcion=f"El usuario {current_user.username} registró un nuevo legajo: {nombre_completo} (DNI: {dni_nuevo}). ID de Sistema: {new_personal_id}",
+                        detalle_json=None # Opcional: podrías pasar json.dumps(form.data) si quieres guardar todo
+                    )
+            except Exception as audit_err:
+                # Si falla la auditoría, solo lo anotamos en el log del servidor (consola)
+                current_app.logger.error(f"Error silencioso en auditoría: {audit_err}")
+
+            # Mensajes de éxito al usuario
             flash('Paso 1 completado: Datos personales registrados.', 'success')
-            
-            # 🚀 CAMBIO: Ya no va al 'completar_legajo'. 
-            # Ahora regresa a la lista con un aviso de "Pendiente de Contrato".
             flash('Legajo registrado exitosamente. Ahora RRHH debe asignar el contrato inicial.', 'success')
+            
             return redirect(url_for('legajo.listar_personal'))
             
         except Exception as e:
-            # ... (manejo de errores igual que antes) ...
-            current_app.logger.error(f"Error: {e}")
-            flash('Error al crear personal.', 'danger')
+            current_app.logger.error(f"Error crítico al crear personal: {e}")
+            flash(f'Error al crear personal: {str(e)}', 'danger')
             
     return render_template('admin/crear_personal.html', form=form, titulo="Nuevo Legajo - Paso 1: Datos Personales")
 
@@ -345,7 +452,7 @@ def completar_legajo(personal_id):
 
     # 🚀 AUTOMATIZACIÓN: Pre-seleccionar la unidad de la persona (Paso 1)
     if request.method == 'GET':
-        form.id_unidad.data = str(persona.id_unidad) # Esto quita la molestia de elegir de nuevo
+        form.id_unidad.data = str(persona.id_unidad) 
 
     if form.validate_on_submit():
         try:
@@ -362,9 +469,9 @@ def completar_legajo(personal_id):
             dni_empleado = persona.dni.strip()
             usuario_existente = legajo_service.get_usuario_por_username(dni_empleado)
             
+            acceso_creado = False
             if not usuario_existente:
                 from werkzeug.security import generate_password_hash
-                # Asumimos que ROL_ID_PERSONAL está definido como 5
                 nuevo_acceso = Usuario(
                     id_usuario=None,
                     username=dni_empleado,
@@ -376,7 +483,28 @@ def completar_legajo(personal_id):
                     nombre_rol='Personal'
                 )
                 legajo_service.crear_usuario_acceso(nuevo_acceso)
+                acceso_creado = True
             
+            # 🛡️ BLOQUE DE AUDITORÍA: Registro de Activación de Legajo
+            try:
+                audit_service = current_app.config.get('AUDIT_SERVICE')
+                if audit_service:
+                    nombre_full = f"{persona.nombres} {persona.apellidos}"
+                    # Detallamos si se creó acceso o solo se asignó contrato
+                    detalle_acceso = "con creación de acceso al sistema" if acceso_creado else " (acceso ya existía)"
+                    
+                    msj_auditoria = (f"Completó legajo (Paso 2) de {nombre_full} (DNI: {dni_empleado}). "
+                                     f"Se asignó cargo y contrato {detalle_acceso}. ID: {personal_id}")
+                    
+                    audit_service.log(
+                        id_usuario=current_user.id,
+                        modulo='Personal',
+                        accion='COMPLETAR_LEGAJO',
+                        descripcion=msj_auditoria
+                    )
+            except Exception as audit_err:
+                current_app.logger.error(f"Error silencioso en auditoría (Paso 2): {audit_err}")
+
             flash('¡Legajo y contrato activados exitosamente!', 'success')
             return redirect(url_for('legajo.ver_legajo', personal_id=personal_id))
             
@@ -425,6 +553,8 @@ def confirmacion_personal_creado(personal_id):
 def subir_documento(personal_id):
     form = DocumentoForm()
     legajo_service = current_app.config['LEGAJO_SERVICE']
+    
+    # Cargar opciones para los select
     form.id_seccion.choices = [('0', '-- Seleccione Sección --')] + legajo_service.get_secciones_for_select()
     form.id_tipo.choices = [('0', '-- Seleccione Tipo --')] + legajo_service.get_tipos_documento_for_select()
     
@@ -433,6 +563,7 @@ def subir_documento(personal_id):
             # ✅ SEGURIDAD: Validar archivo antes de procesarlo
             archivo = form.archivo.data
             is_valid, error_message = FileValidationService.validate_file(archivo)
+            
             if not is_valid:
                 from app.utils.error_handler import registrar_error_automatico
                 try:
@@ -440,15 +571,41 @@ def subir_documento(personal_id):
                 except ValueError as ve:
                     registrar_error_automatico(ve)
                     current_app.logger.warning(f"SEGURIDAD: Intento de subir archivo inválido - {archivo.filename} - Error: {error_message} - Usuario: {current_user.username}")
+                
                 flash(error_message or 'El archivo no es válido o contiene código malicioso.', 'danger')
                 return redirect(url_for('legajo.ver_legajo', personal_id=personal_id))
             
+            # 1. Obtener nombre del trabajador para una auditoría de calidad
+            datos_p = legajo_service.get_personal_details(personal_id, current_user)
+            nombre_trabajador = "Desconocido"
+            if datos_p and 'personal' in datos_p:
+                p = datos_p['personal']
+                nombre_trabajador = f"{p.get('nombres', '')} {p.get('apellidos', '')}"
+
+            # 2. Procesar la subida del documento
             form_data = form.data
             form_data['id_personal'] = personal_id
             legajo_service.upload_document_to_personal(form_data, archivo, current_user.id)
+            
+            # 🛡️ BLOQUE DE AUDITORÍA: Registro de Subida de Archivo
+            try:
+                audit_service = current_app.config.get('AUDIT_SERVICE')
+                if audit_service:
+                    # Log detallado con nombre del archivo y del trabajador
+                    msj_auditoria = f"Subió el archivo '{archivo.filename}' al legajo de {nombre_trabajador} (ID: {personal_id})"
+                    
+                    audit_service.log(
+                        id_usuario=current_user.id,
+                        modulo='Documentos',
+                        accion='SUBIR',
+                        descripcion=msj_auditoria
+                    )
+            except Exception as audit_err:
+                current_app.logger.error(f"Error en auditoría (Subir Doc): {audit_err}")
+
             flash('Documento subido correctamente.', 'success')
+
         except ValueError as ve:
-            # Captura errores de validación específicos del servicio (ej. tamaño de archivo)
             current_app.logger.warning(f"Error de validación al subir documento para personal {personal_id}: {ve}")
             flash(str(ve), 'danger')
         except Exception as e:
@@ -456,14 +613,16 @@ def subir_documento(personal_id):
             registrar_error_automatico(e)
             current_app.logger.error(f"Error inesperado al subir documento para personal {personal_id}: {e}")
             flash(f'Ocurrió un error inesperado al subir el documento.', 'danger')
+            
     else:
-        # Si la validación del formulario falla, registra el error y flashea los mensajes.
+        # Manejo de fallos de validación del formulario
         error_str = "; ".join([f"{field}: {', '.join(errors)}" for field, errors in form.errors.items()])
         current_app.logger.warning(f"Fallo de validación al subir documento para personal {personal_id}: {error_str}")
         for field, errors in form.errors.items():
             for error in errors:
                 flash(f"Error en el campo '{getattr(form, field).label.text}': {error}", 'danger')
-                break # Muestra solo el primer error por campo para no saturar
+                break 
+
     return redirect(url_for('legajo.ver_legajo', personal_id=personal_id))
 
 
@@ -473,12 +632,34 @@ def subir_documento(personal_id):
 @role_required('AdministradorLegajos')
 def eliminar_personal(personal_id):
     legajo_service = current_app.config['LEGAJO_SERVICE']
+    
     try:
-        # CORRECCIÓN: Usamos la función BLINDADA que sincroniza con Sistemas
-        # Enviamos 'Inactivo' para que el sistema ponga al usuario en ROJO (0)
+        # 1. Obtenemos los datos antes de desactivar para el reporte de auditoría
+        # Usamos current_user para que el repositorio sepa quién consulta
+        datos_previos = legajo_service.get_personal_details(personal_id, current_user)
+        nombre_persona = "Desconocido"
+        
+        if datos_previos and 'personal' in datos_previos:
+            p = datos_previos['personal']
+            nombre_persona = f"{p.get('nombres', '')} {p.get('apellidos', '')} (DNI: {p.get('dni', 'N/A')})"
+
+        # 2. Ejecutamos la desactivación (Sincroniza con Sistemas e Inactiva)
         success, msg = legajo_service.cambiar_estado_personal(personal_id, 'Inactivo')
         
         if success:
+            # 🛡️ BLOQUE DE AUDITORÍA: Registro de Baja
+            try:
+                audit_service = current_app.config.get('AUDIT_SERVICE')
+                if audit_service:
+                    audit_service.log(
+                        id_usuario=current_user.id,
+                        modulo='Personal',
+                        accion='ELIMINAR', # O 'DAR_DE_BAJA'
+                        descripcion=f"Se dio de BAJA al legajo de {nombre_persona}. Acceso al sistema bloqueado. ID: {personal_id}"
+                    )
+            except Exception as audit_err:
+                current_app.logger.error(f"Error en auditoría (Baja): {audit_err}")
+
             flash('El legajo ha sido desactivado y el acceso al sistema bloqueado.', 'success')
         else:
             flash(f'Advertencia: {msg}', 'warning')
@@ -489,17 +670,42 @@ def eliminar_personal(personal_id):
         
     return redirect(url_for('legajo.listar_personal'))
 
+
 @legajo_bp.route('/personal/<int:personal_id>/reactivar', methods=['POST'])
 @login_required
 @role_required('AdministradorLegajos')
 def reactivar_personal(personal_id):
     legajo_service = current_app.config['LEGAJO_SERVICE']
     try:
-        # CORRECCIÓN CRÍTICA: Usamos la misma función BLINDADA
+        # 1. Obtenemos datos antes de reactivar para que el log sea "bacán"
+        datos_previos = legajo_service.get_personal_details(personal_id, current_user)
+        nombre_persona = "Desconocido"
+        
+        if datos_previos and 'personal' in datos_previos:
+            p = datos_previos['personal']
+            nombre_persona = f"{p.get('nombres', '')} {p.get('apellidos', '')} (DNI: {p.get('dni', 'N/A')})"
+
+        # 2. CORRECCIÓN CRÍTICA: Usamos la misma función BLINDADA
         # Enviamos 'Activo' para que el sistema detecte la palabra clave y ponga al usuario en VERDE (1)
         success, msg = legajo_service.cambiar_estado_personal(personal_id, 'Activo')
         
         if success:
+            # 🛡️ BLOQUE DE AUDITORÍA: Registro de Reactivación
+            try:
+                audit_service = current_app.config.get('AUDIT_SERVICE')
+                if audit_service:
+                    # Mensaje detallado para la bitácora
+                    msj_auditoria = f"Se REACTIVÓ el legajo de {nombre_persona}. Acceso al sistema habilitado nuevamente. ID: {personal_id}"
+                    
+                    audit_service.log(
+                        id_usuario=current_user.id,
+                        modulo='Personal',
+                        accion='REACTIVAR',
+                        descripcion=msj_auditoria
+                    )
+            except Exception as audit_err:
+                current_app.logger.error(f"Error en auditoría (Reactivar): {audit_err}")
+
             flash('El legajo ha sido reactivado y el acceso al sistema habilitado.', 'success')
         else:
             flash(f'Advertencia: {msg}', 'warning')
@@ -537,19 +743,39 @@ def editar_personal(personal_id):
             nuevo_dni = form.dni.data
             
             # 🚀 VALIDACIÓN CRÍTICA: ¿El DNI ya lo tiene otro trabajador?
-            # Usamos el nuevo método del repositorio que ignora el ID actual
             if legajo_service._personal_repo.existe_dni_en_otros(nuevo_dni, personal_id):
                 flash(f'¡BLOQUEO DE INTEGRIDAD! El DNI {nuevo_dni} ya está registrado a nombre de otro trabajador.', 'danger')
                 return render_template('admin/editar_personal.html', form=form, persona=persona_data, titulo="Editar Legajo")
 
-            # 2. Si pasa la validación, procedemos a actualizar
+            # 2. Si pasa la validación, procedemos a actualizar en la BD
             legajo_service.update_personal_details(personal_id, form.data, current_user.id)
             
+            # 🛡️ BLOQUE DE AUDITORÍA: Registro de Modificación DETALLADO
+            try:
+                audit_service = current_app.config.get('AUDIT_SERVICE')
+                if audit_service:
+                    # Extraemos los nombres actualizados directamente del formulario
+                    nombre_editado = f"{form.nombres.data} {form.apellidos.data}"
+                    
+                    # 💡 DESCRIPCIÓN DINÁMICA: Ahora con nombre y DNI
+                    nueva_descripcion = f"Se actualizaron los datos del legajo de {nombre_editado} (DNI: {nuevo_dni}) (ID: {personal_id})"
+                    
+                    # Llamamos a .log() que es el método de tu AuditService
+                    audit_service.log(
+                        id_usuario=current_user.id,
+                        modulo='Personal',
+                        accion='ACTUALIZAR',
+                        descripcion=nueva_descripcion,
+                        detalle_dict=None
+                    )
+            except Exception as audit_err:
+                current_app.logger.error(f"Error silencioso en auditoría (Editar): {audit_err}")
+
             flash('Legajo actualizado correctamente en la base de datos.', 'success')
             return redirect(url_for('legajo.ver_legajo', personal_id=personal_id))
             
         except Exception as e:
-            # 🚀 REGISTRO AUTOMÁTICO: Para que aparezca en tu tabla de errores
+            # 🚀 REGISTRO AUTOMÁTICO DE ERROR TÉCNICO
             from app.utils.error_handler import registrar_error_automatico
             registrar_error_automatico(e)
             
@@ -568,31 +794,88 @@ def editar_personal(personal_id):
 
 @legajo_bp.route('/documento/<int:documento_id>/ver')
 @login_required
-@role_required('AdministradorLegajos', 'RRHH', 'Sistemas', 'Personal') # <--- AGREGADO 'Personal'
+@role_required('AdministradorLegajos', 'RRHH', 'Sistemas', 'Personal') 
 def ver_documento(documento_id):
     """
     Gestiona la solicitud para ver un archivo (Descarga/Vista previa).
+    AHORA CON AUDITORÍA VINCULADA AL TRABAJADOR Y DESCOMPRESIÓN ZLIB.
     """
     legajo_service = current_app.config['LEGAJO_SERVICE']
     
-    # --- NUEVA VALIDACIÓN DE SEGURIDAD ---
+    # --- 1. VALIDACIÓN DE SEGURIDAD ---
     if not legajo_service.verify_document_access(documento_id, current_user):
         flash('No tiene permiso para acceder a este documento.', 'danger')
         return redirect(url_for('personal.inicio') if current_user.rol == 'Personal' else url_for('main_dashboard'))
-    # -------------------------------------
 
     try:
+        # --- 2. OBTENER DATOS DEL DOCUMENTO ---
         document = legajo_service.get_document_for_download(documento_id)
         
         if not document or not document.get('data'):
             flash('El documento no fue encontrado.', 'danger')
             return redirect(request.referrer or url_for('index'))
 
+        # 🛡️ BLOQUE DE AUDITORÍA: Identificación del Propietario (Tabla 'documentos')
+        try:
+            audit_service = current_app.config.get('AUDIT_SERVICE')
+            if audit_service:
+                conn = get_db_read()
+                cursor = conn.cursor()
+                # Usamos la tabla 'documentos' que confirmamos en SSMS
+                sql = """
+                    SELECT p.id_personal, p.nombres + ' ' + p.apellidos 
+                    FROM documentos d
+                    INNER JOIN personal p ON d.id_personal = p.id_personal
+                    WHERE d.id_documento = ?
+                """
+                cursor.execute(sql, (documento_id,))
+                res = cursor.fetchone()
+                
+                id_p = res[0] if res else "N/A"
+                nombre_p = res[1] if res else "Desconocido"
+                nombre_archivo = document.get('filename', 'Archivo')
+
+                # Detectamos si es descarga o vista previa para el log
+                tipo_accion = "DESCARGÓ" if request.args.get('download') == '1' else "VISUALIZÓ"
+                
+                audit_service.log(
+                    id_usuario=current_user.id,
+                    modulo='Documentos',
+                    accion='VER_ARCHIVO',
+                    descripcion=f"{tipo_accion} '{nombre_archivo}' (ID Doc: {documento_id}). Dueño: {nombre_p} (ID: {id_p})"
+                )
+        except Exception as audit_err:
+            current_app.logger.error(f"Error silencioso en auditoría (ver_documento): {audit_err}")
+
+        # --- 3. 🔥 MAGIA DE DESCOMPRESIÓN (El Inflador) ---
+        archivo_binario = document['data']
+        try:
+            data_final = zlib.decompress(archivo_binario)
+        except zlib.error:
+            # Si el archivo es antiguo (antes de implementar zlib), lo pasa directo
+            data_final = archivo_binario
+
+        # --- 4. DETECCIÓN DE FORMATO ---
+        mimetype, _ = mimetypes.guess_type(document['filename'])
+        if not mimetype:
+            mimetype = 'application/octet-stream'
+
+        SAFE_INLINE_MIMETYPES = [
+            'application/pdf', 'image/jpeg', 'image/png', 
+            'image/gif', 'image/webp', 'text/plain'
+        ]
+
+        # ¿Se descarga o se ve en el navegador?
+        force_download = request.args.get('download') == '1'
+        should_be_attachment = force_download or (mimetype not in SAFE_INLINE_MIMETYPES)
+
         return send_file(
-            io.BytesIO(document['data']),
-            as_attachment=False,
+            io.BytesIO(data_final),
+            mimetype=mimetype,
+            as_attachment=should_be_attachment,
             download_name=document['filename']
         )
+
     except Exception as e:
         current_app.logger.error(f"Error al visualizar documento {documento_id}: {e}")
         flash('Ocurrió un error al intentar mostrar el archivo.', 'danger')
@@ -611,62 +894,138 @@ def eliminar_documento(documento_id):
     # --- FIN DEL CÓDIGO DE SEGUIMIENTO ---
     
     legajo_service = current_app.config['LEGAJO_SERVICE']
+    
     try:
+        # 🛡️ OBTENCIÓN DE DATOS PARA AUDITORÍA (Antes de eliminar)
+        # Intentamos obtener info del documento para que el log no sea solo un ID frío
+        info_doc = "Desconocido"
+        try:
+            # Asumimos que el service tiene un método para ver el detalle del doc
+            # Si no lo tiene, el bloque catch evitará que la ruta falle
+            detalles = legajo_service.get_document_details(documento_id)
+            if detalles:
+                info_doc = f"'{detalles.get('nombre_archivo', 'Sin nombre')}' (Tipo: {detalles.get('tipo_documento', 'N/A')})"
+        except:
+            info_doc = f"con ID {documento_id}"
+
+        # Ejecutar la eliminación en la base de datos
         legajo_service.delete_document_by_id(documento_id, current_user.id)
         
+        # 🛡️ BLOQUE DE AUDITORÍA: Registro de Eliminación de Documento
+        try:
+            audit_service = current_app.config.get('AUDIT_SERVICE')
+            if audit_service:
+                audit_service.log(
+                    id_usuario=current_user.id,
+                    modulo='Documentos',
+                    accion='ELIMINAR',
+                    descripcion=f"El usuario eliminó el documento {info_doc}. ID Documento: {documento_id}"
+                )
+        except Exception as audit_err:
+            current_app.logger.error(f"Error silencioso en auditoría (Eliminar Doc): {audit_err}")
+            
         flash('Documento eliminado correctamente.', 'success')
 
     except Exception as e:
         current_app.logger.error(f"Error al eliminar documento {documento_id}: {e}")
+        flash(f'Error al intentar eliminar el documento: {str(e)}', 'danger')
     
     # Redirige al usuario a la página anterior
     print("DEBUG: Redirigiendo al usuario.")
     return redirect(request.referrer or url_for('index'))
 
 
+
 @legajo_bp.route('/documento/<int:documento_id>/visualizar')
 @login_required
-@role_required('AdministradorLegajos', 'RRHH', 'Sistemas', 'Personal') # <--- AGREGADO 'Personal'
+@role_required('AdministradorLegajos', 'RRHH', 'Sistemas', 'Personal')
 def visualizar_documento(documento_id):
     """
-    Visualización en línea inteligente (PDF/Imágenes en navegador, otros descarga).
+    Visualización en línea inteligente con auditoría garantizada.
+    Soporta PDF/Imágenes en navegador y descarga automática para otros tipos.
     """
     legajo_service = current_app.config['LEGAJO_SERVICE']
 
-    # --- NUEVA VALIDACIÓN DE SEGURIDAD ---
+    # 1. VALIDACIÓN DE SEGURIDAD (Verificar si tiene permiso de acceso)
     if not legajo_service.verify_document_access(documento_id, current_user):
         flash('No tiene permiso para acceder a este documento.', 'danger')
-        return redirect(url_for('personal.inicio') if current_user.rol == 'Personal' else url_for('main_dashboard'))
-    # -------------------------------------
+        if current_user.rol == 'Personal':
+            return redirect(url_for('personal.inicio'))
+        return redirect(url_for('main_dashboard'))
 
     try:
+        # 2. OBTENER DATOS DEL ARCHIVO DESDE LA BD
         document = legajo_service.get_document_for_download(documento_id)
         
         if not document or not document.get('data'):
-            flash('El documento no fue encontrado.', 'danger')
+            flash('El documento no fue encontrado o está vacío.', 'danger')
             return redirect(request.referrer or url_for('index'))
 
+        # 🛡️ BLOQUE DE AUDITORÍA REFORZADO (Consulta SQL Directa con tabla corregida)
+        try:
+            audit_service = current_app.config.get('AUDIT_SERVICE')
+            if audit_service:
+                # Usamos el nombre de tabla 'documentos' confirmado por SSMS
+                conn = get_db_read()
+                cursor = conn.cursor()
+                sql = """
+                    SELECT p.id_personal, p.nombres + ' ' + p.apellidos 
+                    FROM documentos d
+                    INNER JOIN personal p ON d.id_personal = p.id_personal
+                    WHERE d.id_documento = ?
+                """
+                cursor.execute(sql, (documento_id,))
+                res = cursor.fetchone()
+                
+                # Extraemos datos del legajo si existen
+                id_p = res[0] if res else "N/A"
+                nombre_p = res[1] if res else "Desconocido"
+                nombre_archivo = document.get('filename', 'Archivo')
+
+                audit_service.log(
+                    id_usuario=current_user.id,
+                    modulo='Documentos',
+                    accion='VISUALIZAR',
+                    descripcion=f"Visualizó '{nombre_archivo}' (ID Doc: {documento_id}). Legajo: {nombre_p} (ID: {id_p})"
+                )
+        except Exception as audit_err:
+            # Error silencioso: no bloqueamos la visualización si falla el log
+            current_app.logger.error(f"Error en log de auditoría (Visualizar): {audit_err}")
+
+        # 3. 🔥 DESCOMPRESIÓN INTELIGENTE (ZLIB)
+        archivo_binario = document['data']
+        try:
+            data_final = zlib.decompress(archivo_binario)
+        except Exception:
+            # Archivo antiguo o no comprimido
+            data_final = archivo_binario
+
+        # 4. DETECCIÓN DE FORMATO (MIME TYPE)
         mimetype, _ = mimetypes.guess_type(document['filename'])
         if not mimetype:
             mimetype = 'application/octet-stream'
 
+        # Formatos que el navegador puede abrir sin descargar
         SAFE_INLINE_MIMETYPES = [
             'application/pdf', 'image/jpeg', 'image/png', 
             'image/gif', 'image/webp', 'text/plain'
         ]
 
+        # Si no es un formato "seguro", forzar descarga (ej: Word, Excel)
         should_be_attachment = mimetype not in SAFE_INLINE_MIMETYPES
 
+        # 5. ENVIAR EL ARCHIVO AL NAVEGADOR
         return send_file(
-            io.BytesIO(document['data']),
+            io.BytesIO(data_final),
             mimetype=mimetype,
             as_attachment=should_be_attachment,
             download_name=document['filename']
         )
+
     except Exception as e:
-        current_app.logger.error(f"Error al visualizar documento {documento_id}: {e}")
-        flash('Error visualizando archivo.', 'danger')
-        return redirect(request.referrer or url_for('index'))    
+        current_app.logger.error(f"Error crítico al visualizar documento {documento_id}: {e}")
+        flash('Ocurrió un error al intentar procesar el archivo.', 'danger')
+        return redirect(request.referrer or url_for('index'))
 
 
 @legajo_bp.route('/api/personal/check_dni/<string:dni>')
@@ -844,7 +1203,9 @@ def listar_personal_para_record():
 def download_record(id_record):
     """
     Permite al Escalafón descargar las planillas cargadas por RRHH.
+    Descomprime el archivo binario antes de forzar la descarga.
     """
+    import zlib
     try:
         legajo_service = current_app.config['LEGAJO_SERVICE']
         # Recuperamos el binario desde la tabla record_laboral
@@ -854,8 +1215,38 @@ def download_record(id_record):
             flash('La boleta de pago no existe.', 'danger')
             return redirect(request.referrer)
 
+        # ---------------------------------------------------------
+        # 🛡️ BLOQUE DE AUDITORÍA (Descargar Récord Laboral)
+        # ---------------------------------------------------------
+        try:
+            audit_service = current_app.config.get('AUDIT_SERVICE')
+            if audit_service:
+                nombre_archivo = document.get('nombre_archivo', 'archivo_desconocido')
+                audit_service.log(
+                    id_usuario=current_user.id,
+                    modulo='Récord Laboral',
+                    accion='DESCARGAR',
+                    descripcion=f"Descargó el archivo de récord laboral: '{nombre_archivo}' (ID: {id_record})."
+                )
+        except Exception as audit_err:
+            current_app.logger.error(f"Error silencioso en auditoría (Descargar Récord): {audit_err}")
+        # ---------------------------------------------------------
+
+        # ==========================================================
+        # 🔥 MAGIA DE DESCOMPRESIÓN
+        # ==========================================================
+        bytes_finales = document['contenido']
+        try:
+            # Intentamos inflar el archivo
+            bytes_finales = zlib.decompress(bytes_finales)
+        except zlib.error:
+            # Si el archivo es antiguo y no estaba comprimido, 
+            # zlib dará error, así que ignoramos y usamos los bytes originales
+            pass
+        # ==========================================================
+
         return send_file(
-            io.BytesIO(document['contenido']),
+            io.BytesIO(bytes_finales), # <-- AHORA USAMOS LOS BYTES INFLADOS
             as_attachment=True,
             download_name=document['nombre_archivo'],
             mimetype='application/pdf'
@@ -864,7 +1255,6 @@ def download_record(id_record):
         current_app.logger.error(f"Error descargando record {id_record}: {e}")
         flash("Error al procesar la descarga.", "danger")
         return redirect(request.referrer)
-    
 
 # --- RUTA PARA VISUALIZAR EXCLUSIVAMENTE EL RÉCORD LABORAL ---
 
@@ -896,6 +1286,25 @@ def ver_record_laboral_detalle(personal_id):
         # Lo guardamos en la llave que usa el HTML
         persona['nombre_unidad'] = unidad_nombre if unidad_nombre else "No especificada"
 
+        # ---------------------------------------------------------
+        # 🛡️ BLOQUE DE AUDITORÍA (Consulta de Récord Laboral)
+        # ---------------------------------------------------------
+        try:
+            audit_service = current_app.config.get('AUDIT_SERVICE')
+            if audit_service:
+                nombre_trabajador = f"{persona.get('nombres', '')} {persona.get('apellidos', '')}".strip()
+                dni_trabajador = persona.get('dni', 'N/A')
+                
+                audit_service.log(
+                    id_usuario=current_user.id,
+                    modulo='Récord Laboral',
+                    accion='CONSULTA_DETALLE',
+                    descripcion=f"Consultó el historial de pagos y planillas de {nombre_trabajador} (DNI: {dni_trabajador}). ID: {personal_id}"
+                )
+        except Exception as audit_err:
+            current_app.logger.error(f"Error silencioso en auditoría (Ver Récord Laboral): {audit_err}")
+        # ---------------------------------------------------------
+
         return render_template(
             'admin/ver_record_laboral_detalle.html',
             persona=persona,
@@ -917,7 +1326,9 @@ def ver_record_laboral_detalle(personal_id):
 def visualizar_boleta_record(id_record):
     """
     Detecta automáticamente si es PDF (visualiza) o Excel (descarga).
+    Descomprime el archivo binario si fue guardado con zlib.
     """
+    import zlib
     try:
         legajo_service = current_app.config['LEGAJO_SERVICE']
         document = legajo_service._personal_repo.get_record_file_by_id(id_record)
@@ -927,6 +1338,36 @@ def visualizar_boleta_record(id_record):
             return redirect(request.referrer)
 
         filename = document.get('nombre_archivo', 'archivo_boleta')
+
+        # ---------------------------------------------------------
+        # 🛡️ BLOQUE DE AUDITORÍA (Ver/Descargar Boleta)
+        # ---------------------------------------------------------
+        try:
+            audit_service = current_app.config.get('AUDIT_SERVICE')
+            if audit_service:
+                audit_service.log(
+                    id_usuario=current_user.id,
+                    modulo='Récord Laboral',
+                    accion='VER_BOLETA',
+                    descripcion=f"Visualizó o descargó la boleta de pago: '{filename}' (ID Récord: {id_record})."
+                )
+        except Exception as audit_err:
+            current_app.logger.error(f"Error silencioso en auditoría (Ver Boleta): {audit_err}")
+        # ---------------------------------------------------------
+
+        # ==========================================================
+        # 🔥 MAGIA DE DESCOMPRESIÓN
+        # ==========================================================
+        bytes_finales = document['contenido']
+        try:
+            # Intentamos inflar el archivo
+            bytes_finales = zlib.decompress(bytes_finales)
+        except zlib.error:
+            # Si el archivo es antiguo y no estaba comprimido, 
+            # zlib dará error, así que ignoramos y usamos los bytes originales
+            pass
+        # ==========================================================
+
         # 🚀 DETECCIÓN DE TIPO: Usamos mimetypes para saber qué es el archivo
         mimetype, _ = mimetypes.guess_type(filename)
         if not mimetype:
@@ -936,7 +1377,7 @@ def visualizar_boleta_record(id_record):
         is_pdf = mimetype == 'application/pdf'
         
         return send_file(
-            io.BytesIO(document['contenido']),
+            io.BytesIO(bytes_finales),  # <-- AHORA USAMOS LOS BYTES INFLADOS
             mimetype=mimetype,
             as_attachment=not is_pdf, # Si NO es PDF, as_attachment será True (Descarga)
             download_name=filename
@@ -944,7 +1385,6 @@ def visualizar_boleta_record(id_record):
     except Exception as e:
         current_app.logger.error(f"Error procesando boleta {id_record}: {e}")
         return "Error al procesar el archivo", 404
-    
 
 
 @legajo_bp.route('/api/personal/check_dni/<dni>', methods=['GET'])
@@ -1001,8 +1441,7 @@ def gestionar_solicitudes_arco():
 @legajo_bp.route('/procesar-arco/<int:id_solicitud>/<accion>', methods=['GET', 'POST'])
 @login_required
 def procesar_arco(id_solicitud, accion):
-    # ✅ CORRECCIÓN 3: Agregamos 'AdministradorEscalafon' AQUÍ TAMBIÉN
-    # Si no lo pones aquí, el botón de aprobar te dará error.
+    # ✅ CORRECCIÓN 3: Agregamos 'AdministradorEscalafon'
     roles_permitidos = ['Administrador', 'Sistemas', 'Legajos', 'RRHH', 'AdministradorLegajos', 'AdministradorEscalafon']
 
     if current_user.rol not in roles_permitidos:
@@ -1013,6 +1452,7 @@ def procesar_arco(id_solicitud, accion):
     cursor = conn.cursor()
 
     try:
+        # Obtener datos de la solicitud para saber a quién afecta
         cursor.execute("SELECT id_personal, datos_afectados FROM solicitudes_arco WHERE id_solicitud = ?", (id_solicitud,))
         row = cursor.fetchone()
         
@@ -1041,25 +1481,54 @@ def procesar_arco(id_solicitud, accion):
                     sets.append(f"{columna} = NULL")
 
             if sets:
+                # Ejecutamos el borrado (Derecho de Cancelación)
                 sql = f"UPDATE personal SET {', '.join(sets)} WHERE id_personal = ?"
                 cursor.execute(sql, (id_personal,))
             
+            # Actualizar estado de la solicitud
             cursor.execute("UPDATE solicitudes_arco SET estado = 'ATENDIDO', fecha_atencion = GETDATE() WHERE id_solicitud = ?", (id_solicitud,))
+            
+            # 🛡️ BLOQUE DE AUDITORÍA: Aprobación ARCO
+            try:
+                audit_service = current_app.config.get('AUDIT_SERVICE')
+                if audit_service:
+                    audit_service.log(
+                        id_usuario=current_user.id,
+                        modulo='Seguridad ARCO',
+                        accion='APROBAR_ARCO',
+                        descripcion=f"APROBADA: Solicitud ID {id_solicitud}. Se eliminaron los datos ({datos_texto}) del legajo ID {id_personal} por derecho ARCO."
+                    )
+            except Exception as audit_err:
+                current_app.logger.error(f"Error en auditoría ARCO (Aprobar): {audit_err}")
+
             flash('Solicitud APROBADA. Datos eliminados correctamente.', 'success')
 
         elif accion == 'RECHAZAR':
             cursor.execute("UPDATE solicitudes_arco SET estado = 'RECHAZADO', fecha_atencion = GETDATE() WHERE id_solicitud = ?", (id_solicitud,))
+            
+            # 🛡️ BLOQUE DE AUDITORÍA: Rechazo ARCO
+            try:
+                audit_service = current_app.config.get('AUDIT_SERVICE')
+                if audit_service:
+                    audit_service.log(
+                        id_usuario=current_user.id,
+                        modulo='Seguridad ARCO',
+                        accion='RECHAZAR_ARCO',
+                        descripcion=f"RECHAZADA: Solicitud ID {id_solicitud} para el legajo ID {id_personal}. Acción ejecutada por {current_user.username}."
+                    )
+            except Exception as audit_err:
+                current_app.logger.error(f"Error en auditoría ARCO (Rechazar): {audit_err}")
+
             flash('Solicitud rechazada.', 'info')
 
         conn.commit()
 
     except Exception as e:
-        conn.rollback()
-        print(f"Error ARCO: {e}")
+        if conn:
+            conn.rollback()
+        current_app.logger.error(f"Error crítico en proceso ARCO: {e}")
         flash('Error al procesar la solicitud.', 'danger')
-    finally:
-        conn.close()
-
+    
     return redirect(url_for('legajo.gestionar_solicitudes_arco'))
 
 
@@ -1318,11 +1787,35 @@ def guardar_planilla_historica():
                 id_planilla, concepto['tipo'], concepto['descripcion'], concepto['monto']
             ))
             
+        # 🛡️ BLOQUE DE AUDITORÍA: Registro de Transacción Financiera
+        try:
+            audit_service = current_app.config.get('AUDIT_SERVICE')
+            if audit_service:
+                # Obtenemos el nombre del trabajador para un log profesional
+                cursor.execute("SELECT nombres + ' ' + apellidos FROM personal WHERE id_personal = ?", (datos['id_personal'],))
+                nombre_trabajador = cursor.fetchone()
+                nombre_p = nombre_trabajador[0] if nombre_trabajador else "Desconocido"
+                
+                msj = (f"Registró planilla histórica manual de {nombre_p} (ID: {datos['id_personal']}) "
+                       f"correspondiente a {datos['mes']}/{datos['anio']}. Monto Neto: {datos['monto_neto']}")
+                
+                audit_service.log(
+                    id_usuario=current_user.id,
+                    modulo='Planillas',
+                    accion='REGISTRAR_PLANILLA_HISTORICA',
+                    descripcion=msj
+                )
+        except Exception as audit_err:
+            current_app.logger.error(f"Error silencioso en auditoría (Planilla Histórica): {audit_err}")
+
         conexion.commit()
         cursor.close()
-        return jsonify({"estado": "ok", "mensaje": "Planilla histórica guardada"}), 200
+        return jsonify({"estado": "ok", "mensaje": "Planilla histórica guardada exitosamente", "id": id_planilla}), 200
 
     except Exception as e:
+        if 'conexion' in locals():
+            conexion.rollback()
+        current_app.logger.error(f"Error al guardar planilla histórica: {str(e)}")
         return jsonify({"estado": "error", "mensaje": str(e)}), 500
 
 
@@ -1374,12 +1867,15 @@ def obtener_planillas_historicas(id_personal):
     try:
         conexion = get_db_read()
         cursor = conexion.cursor()
+        
+        # 🚀 AQUÍ ESTÁ LA CORRECCIÓN: Agregamos "AND (activo = 1 OR activo IS NULL)"
+        # Esto obliga a la tabla a ocultar los archivos que están en la papelera.
         sql = """
             SELECT id_planilla_historica, anio, mes, tipo_moneda, 
                    total_ingresos, total_descuentos, monto_neto, 
                    ruta_escaneado, ruta_generado, ISNULL(bloqueado, 0) as bloqueado
             FROM Planillas_Historicas 
-            WHERE id_personal = ?
+            WHERE id_personal = ? AND (activo = 1 OR activo IS NULL)
             ORDER BY anio DESC, 
                      CASE mes 
                         WHEN 'Enero' THEN 1 WHEN 'Febrero' THEN 2 WHEN 'Marzo' THEN 3 
@@ -1421,20 +1917,59 @@ def gestionar_historico_personal(personal_id):
 @login_required
 @role_required('AdministradorLegajos')
 def eliminar_planilla_historica(id_planilla):
+    conexion = None
     try:
         conexion = get_db_write()
         cursor = conexion.cursor()
-        cursor.execute("SELECT bloqueado FROM Planillas_Historicas WHERE id_planilla_historica = ?", (id_planilla,))
+
+        # 1. Obtenemos datos para la auditoría y chequeamos bloqueo
+        cursor.execute("""
+            SELECT ph.bloqueado, p.nombres + ' ' + p.apellidos, ph.mes, ph.anio
+            FROM Planillas_Historicas ph
+            INNER JOIN personal p ON ph.id_personal = p.id_personal
+            WHERE ph.id_planilla_historica = ?
+        """, (id_planilla,))
         row = cursor.fetchone()
-        if row and row[0]:
+
+        if not row:
+            return jsonify({"estado": "error", "mensaje": "Planilla no encontrada."}), 404
+
+        bloqueado, nombre_p, mes_p, anio_p = row
+
+        if bloqueado:
             return jsonify({"estado": "error", "mensaje": "Planilla bloqueada."}), 403
-        cursor.execute("DELETE FROM Planillas_Historicas_Conceptos WHERE id_planilla_historica = ?", (id_planilla,))
-        cursor.execute("DELETE FROM Planillas_Historicas WHERE id_planilla_historica = ?", (id_planilla,))
+
+        # 🚀 2. "BORRADO" ESTILO WINDOWS (Apagamos el activo y ponemos fecha)
+        cursor.execute("""
+            UPDATE Planillas_Historicas 
+            SET activo = 0, fecha_eliminacion = GETDATE()
+            WHERE id_planilla_historica = ?
+        """, (id_planilla,))
+
+        # 🛡️ 3. AUDITORÍA
+        try:
+            audit_service = current_app.config.get('AUDIT_SERVICE')
+            if audit_service:
+                msj = f"Envió a papelera la planilla histórica ID {id_planilla} de {nombre_p} ({mes_p}/{anio_p})."
+                audit_service.log(
+                    id_usuario=current_user.id,
+                    modulo='Planillas',
+                    accion='MOVER_A_PAPELERA',
+                    descripcion=msj
+                )
+        except Exception as audit_err:
+            current_app.logger.error(f"Error en auditoría: {audit_err}")
+
         conexion.commit()
-        cursor.close()
-        return jsonify({"estado": "ok", "mensaje": "Planilla eliminada."})
+        return jsonify({"estado": "ok", "mensaje": "Planilla movida a la papelera."})
+
     except Exception as e:
+        if conexion: conexion.rollback()
         return jsonify({"estado": "error", "mensaje": str(e)}), 500
+    finally:
+        if conexion:
+            cursor.close()
+            conexion.close()
 
 # ==============================================================================
 # 🔐 GESTIÓN DE SEGURIDAD: DESBLOQUEO CON TOKEN REAL
@@ -1490,6 +2025,38 @@ def toggle_candado_historico(id_planilla):
         # 4. EJECUTAMOS EL CAMBIO EN LA BASE DE DATOS
         sql_update = "UPDATE Planillas_Historicas SET bloqueado = ? WHERE id_planilla_historica = ?"
         cursor.execute(sql_update, (nuevo_estado, id_planilla))
+
+        # ---------------------------------------------------------
+        # 🛡️ BLOQUE DE AUDITORÍA (Inyectado sin alterar tu lógica)
+        # ---------------------------------------------------------
+        try:
+            audit_service = current_app.config.get('AUDIT_SERVICE')
+            if audit_service:
+                # Buscamos rápido a quién le pertenece para que el log quede bien detallado
+                cursor.execute("""
+                    SELECT p.nombres + ' ' + p.apellidos, ph.mes, ph.anio
+                    FROM Planillas_Historicas ph
+                    INNER JOIN personal p ON ph.id_personal = p.id_personal
+                    WHERE ph.id_planilla_historica = ?
+                """, (id_planilla,))
+                info = cursor.fetchone()
+                
+                if info:
+                    nombre_p, mes_p, anio_p = info
+                    # Determinamos las palabras exactas para el log
+                    accion_log = 'DESBLOQUEAR' if nuevo_estado == 0 else 'BLOQUEAR'
+                    verbo = 'Desbloqueó' if nuevo_estado == 0 else 'Cerró con candado'
+                    
+                    audit_service.log(
+                        id_usuario=current_user.id,
+                        modulo='Seguridad Planillas',
+                        accion=f'{accion_log}_HISTORICA',
+                        descripcion=f"{verbo} la planilla histórica ID {id_planilla} de {nombre_p} ({mes_p}/{anio_p})."
+                    )
+        except Exception as audit_err:
+            current_app.logger.error(f"Error silencioso en auditoría (Candado Histórico): {audit_err}")
+        # ---------------------------------------------------------
+
         conexion.commit()
         cursor.close()
         
@@ -1567,18 +2134,34 @@ def obtener_detalle_planilla_historica(id_planilla):
 @role_required('AdministradorLegajos')
 def actualizar_planilla_historica(id_planilla):
     datos = request.get_json()
-    if not datos: return jsonify({"estado": "error", "mensaje": "No se recibieron datos para actualizar."}), 400
+    if not datos: 
+        return jsonify({"estado": "error", "mensaje": "No se recibieron datos para actualizar."}), 400
 
     conexion = None
     try:
         conexion = get_db_write()
         cursor = conexion.cursor()
         
-        cursor.execute("SELECT bloqueado FROM Planillas_Historicas WHERE id_planilla_historica = ?", (id_planilla,))
+        # 0. Verificación de Bloqueo e Identificación del Trabajador (para Auditoría)
+        sql_check = """
+            SELECT ph.bloqueado, p.id_personal, p.nombres + ' ' + p.apellidos 
+            FROM Planillas_Historicas ph
+            INNER JOIN personal p ON ph.id_personal = p.id_personal
+            WHERE ph.id_planilla_historica = ?
+        """
+        cursor.execute(sql_check, (id_planilla,))
         row = cursor.fetchone()
-        if row and row[0]: return jsonify({"estado": "error", "mensaje": "Planilla bloqueada."}), 403
+        
+        if not row:
+            return jsonify({"estado": "error", "mensaje": "Planilla no encontrada."}), 404
+        
+        bloqueado, id_personal_audit, nombre_trabajador = row
+        
+        if bloqueado:
+            return jsonify({"estado": "error", "mensaje": "La planilla está bloqueada y no puede editarse."}), 403
 
         # 🚀 1. Actualizamos la Cabecera con datos nuevos
+        # Nota: ruta_generado = NULL es clave para que el PDF se actualice luego
         sql_update_cabecera = """
             UPDATE Planillas_Historicas 
             SET anio = ?, mes = ?, tipo_moneda = ?, total_ingresos = ?, total_descuentos = ?, monto_neto = ?,
@@ -1594,17 +2177,39 @@ def actualizar_planilla_historica(id_planilla):
             id_planilla
         ))
         
-        # 2. Reemplazo de Conceptos
+        # 2. Reemplazo de Conceptos (Borrar y Volver a Insertar)
         cursor.execute("DELETE FROM Planillas_Historicas_Conceptos WHERE id_planilla_historica = ?", (id_planilla,))
-        sql_insert_conceptos = "INSERT INTO Planillas_Historicas_Conceptos (id_planilla_historica, tipo_concepto, descripcion_concepto, monto) VALUES (?, ?, ?, ?)"
         
+        sql_insert_conceptos = """
+            INSERT INTO Planillas_Historicas_Conceptos (id_planilla_historica, tipo_concepto, descripcion_concepto, monto) 
+            VALUES (?, ?, ?, ?)
+        """
         for c in datos.get('conceptos', []):
-            cursor.execute(sql_insert_conceptos, (id_planilla, c['tipo'], c['descripcion'], float(c.get('monto') or 0)))
+            monto_valor = float(c.get('monto') or 0)
+            cursor.execute(sql_insert_conceptos, (id_planilla, c['tipo'], c['descripcion'], monto_valor))
+
+        # 🛡️ BLOQUE DE AUDITORÍA: Registro de la Modificación
+        try:
+            audit_service = current_app.config.get('AUDIT_SERVICE')
+            if audit_service:
+                msj = (f"Actualizó planilla histórica ID: {id_planilla} de {nombre_trabajador} "
+                       f"(Periodo: {datos['mes']}/{datos['anio']}). Nuevo Neto: {datos['monto_neto']}")
+                
+                audit_service.log(
+                    id_usuario=current_user.id,
+                    modulo='Planillas',
+                    accion='ACTUALIZAR_PLANILLA_HISTORICA',
+                    descripcion=msj
+                )
+        except Exception as audit_err:
+            current_app.logger.error(f"Error silencioso en auditoría (Actualizar Planilla): {audit_err}")
             
         conexion.commit()
-        return jsonify({"estado": "ok", "mensaje": "Cambios guardados."})
+        return jsonify({"estado": "ok", "mensaje": "Cambios guardados y auditoría registrada."})
+
     except Exception as e:
         if conexion: conexion.rollback()
+        current_app.logger.error(f"Error crítico al actualizar planilla {id_planilla}: {str(e)}")
         return jsonify({"estado": "error", "mensaje": f"Falla al actualizar: {str(e)}"}), 500
     finally:
         if conexion:
@@ -1757,6 +2362,25 @@ def catalogo_presupuestal():
         
         # 🔥 EL CAMBIO CRÍTICO ESTÁ AQUÍ: Pasamos current_user.username para el Log de Auditoría
         if repo.guardar_presupuesto_config(nueva_config, current_user.username):
+            
+            # ---------------------------------------------------------
+            # 🛡️ BLOQUE DE AUDITORÍA (Creación de Catálogo)
+            # ---------------------------------------------------------
+            try:
+                audit_service = current_app.config.get('AUDIT_SERVICE')
+                if audit_service:
+                    np_cod = nueva_config.get('np', 'N/A')
+                    act = nueva_config.get('actividad', 'N/A')
+                    audit_service.log(
+                        id_usuario=current_user.id,
+                        modulo='Catálogo Presupuestal',
+                        accion='NUEVA_CONFIGURACION',
+                        descripcion=f"Añadió nueva configuración al catálogo: NP {np_cod} - {act}."
+                    )
+            except Exception as audit_err:
+                current_app.logger.error(f"Error en auditoría (Crear Catálogo): {audit_err}")
+            # ---------------------------------------------------------
+
             flash("✅ Configuración añadida al catálogo exitosamente.", "success")
         else:
             flash("❌ Hubo un error al intentar guardar la configuración.", "danger")
@@ -1768,14 +2392,40 @@ def catalogo_presupuestal():
     return render_template('admin/config_presupuesto.html', configs=configs)
 
 # --- Ruta para el botón Eliminar ---
+# --- Ruta para el botón Eliminar ---
 @legajo_bp.route('/configuracion/catalogo-presupuestal/eliminar/<int:id_config>', methods=['POST'])
 @login_required
 @role_required('AdministradorLegajos', 'AdministradorEscalafon', 'Sistemas') 
 def eliminar_catalogo_presupuestal(id_config):
     repo = PlanillaRepository()
     
-    # 🔥 Le pasamos current_user.username a la función para la auditoría
+    # 🔥 Le pasamos current_user.username a la función para la auditoría interna
     resultado = repo.eliminar_presupuesto_config(id_config, current_user.username)
     
+    # 🚀 CORRECCIÓN: Registramos en auditoría tanto si se ELIMINÓ ('success') 
+    # como si se OCULTÓ/INACTIVÓ por estar en uso ('warning')
+    estado_res = resultado.get('estado')
+    
+    if estado_res in ['success', 'warning']:
+        # ---------------------------------------------------------
+        # 🛡️ BLOQUE DE AUDITORÍA (Eliminación o Baja de Catálogo)
+        # ---------------------------------------------------------
+        try:
+            audit_service = current_app.config.get('AUDIT_SERVICE')
+            if audit_service:
+                # Dinamizamos la acción según lo que realmente pasó
+                accion_auditoria = 'ELIMINAR_CONFIGURACION' if estado_res == 'success' else 'OCULTAR_CONFIGURACION'
+                
+                audit_service.log(
+                    id_usuario=current_user.id,
+                    modulo='Catálogo Presupuestal',
+                    accion=accion_auditoria,
+                    # Usamos el mismo mensaje inteligente que te devolvió el repositorio
+                    descripcion=f"{resultado.get('mensaje')} (ID Config: {id_config})"
+                )
+        except Exception as audit_err:
+            current_app.logger.error(f"Error en auditoría (Eliminar Catálogo): {audit_err}")
+        # ---------------------------------------------------------
+
     flash(resultado['mensaje'], resultado['estado'])
     return redirect(url_for('legajo.catalogo_presupuestal'))

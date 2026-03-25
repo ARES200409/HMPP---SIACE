@@ -141,7 +141,7 @@ def eliminar_contrato(id_contrato, id_personal):
         cursor = conn.cursor()
         cursor.execute("DELETE FROM contratos WHERE id_contrato = ?", (id_contrato,))
         conn.commit()
-        conn.close()
+        #conn.close()
         flash("Contrato eliminado correctamente del historial.", "success")
     except Exception as e:
         current_app.logger.error(f"Error al eliminar contrato: {e}")
@@ -153,14 +153,15 @@ def eliminar_contrato(id_contrato, id_personal):
 def visualizar_contrato(id_contrato):
     """
     Recupera el archivo binario de la tabla contratos y lo muestra en el navegador.
-    Corregido typo de 'id_contato' a 'id_contrato' y columnas de SQL.
+    Soporta archivos comprimidos (zlib) y archivos antiguos sin compresión.
     """
+    import zlib
+    import io
     try:
         conn = get_db_read()
         cursor = conn.cursor()
         
-        # ✅ USAMOS TUS COLUMNAS REALES: nombre_archivo_real y archivo_binario
-        # Si tu columna de PDF se llama diferente (ej: archivo_resolucion), cámbiala aquí:
+        # 🚀 CONSULTA SQL: nombre_archivo_real (0), resolucion (1), archivo_binario (2)
         cursor.execute("""
             SELECT nombre_archivo_real, resolucion, archivo_binario 
             FROM contratos 
@@ -169,29 +170,46 @@ def visualizar_contrato(id_contrato):
         
         row = cursor.fetchone()
         
-        # Nota: No cerramos conn manualmente aquí para evitar 'closed connection'
-
         if not row:
             flash("❌ No se encontró el registro del contrato.", "warning")
             return redirect(request.referrer)
 
-        pdf_data = row[2] # Columna 'archivo_binario'
+        # 1. Extraemos los datos binarios
+        pdf_data = row[2] 
+        
         if not pdf_data:
             flash("❌ Este contrato no tiene un archivo PDF adjunto.", "info")
             return redirect(request.referrer)
 
-        # Nombre del archivo para el navegador
+        # 2. 🔥 MAGIA DE DESCOMPRESIÓN (Para archivos minimizados)
+        # Forzamos conversión a bytes por si el driver devuelve bytearray
+        bytes_crudos = bytes(pdf_data)
+        
+        try:
+            # Intentamos "inflar" el archivo
+            pdf_final = zlib.decompress(bytes_crudos)
+            print(f"✅ Archivo ID {id_contrato} descomprimido con éxito.")
+        except zlib.error:
+            # Si da error, significa que NO está comprimido (es un archivo antiguo)
+            # Lo usamos tal cual viene de la base de datos
+            pdf_final = bytes_crudos
+            print(f"ℹ️ Archivo ID {id_contrato} abierto en modo compatibilidad (sin compresión).")
+
+        # 3. Preparar el nombre del archivo para el navegador
         nombre_display = row[0] if row[0] else f"Resolucion_{row[1]}.pdf"
 
+        # 4. Enviar al navegador para visualización inmediata
         return send_file(
-            BytesIO(pdf_data),
+            io.BytesIO(pdf_final),
             download_name=nombre_display,
-            as_attachment=False,
+            as_attachment=False, # False = Se abre en el navegador; True = Se descarga
             mimetype='application/pdf'
         )
 
     except Exception as e:
-        # Imprime el error real en la terminal para que lo veas
-        print(f"🔥 ERROR EN VISUALIZAR: {e}")
-        flash("Error de Base de Datos al intentar abrir el archivo.", "danger")
+        print(f"🔥 ERROR CRÍTICO EN VISUALIZAR: {str(e)}")
+        flash("Error interno al intentar procesar el PDF.", "danger")
         return redirect(request.referrer)
+    finally:
+        # Cerramos el cursor si existe para liberar recursos
+        if 'cursor' in locals(): cursor.close()

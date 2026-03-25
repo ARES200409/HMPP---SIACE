@@ -4,22 +4,20 @@ import logging
 from logging.handlers import RotatingFileHandler
 import os
 from datetime import timedelta
-from flask import Flask, redirect, url_for, current_app, render_template, flash
+from flask import Flask, redirect, url_for, current_app, render_template, flash, g, request
 from flask_login import LoginManager, current_user, login_required, logout_user
 from flask_wtf.csrf import CSRFProtect
 from flask_mail import Mail
-from app.presentation.routes.personal_routes import personal_bp
 from app.utils.error_handler import registrar_error_automatico
-
 
 # Seguridad: Importar las nuevas extensiones
 from flask_talisman import Talisman
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
-# Importación de Servicios y Repositorios (esto está bien aquí)
+# Importación de Servicios y Repositorios
 from .config import Config
-from .database.connector import init_app_db
+from .database.connector import init_app_db, get_db_read
 from .domain.models.usuario import Usuario
 from .application.services.email_service import EmailService
 from .application.services.usuario_service import UsuarioService
@@ -36,7 +34,6 @@ from .infrastructure.persistence.sqlserver_repository import (
     SqlServerSolicitudRepository 
 )
 
-
 # Inicialización de extensiones de Flask (sin la app)
 login_manager = LoginManager()
 login_manager.login_view = 'auth.login'
@@ -44,6 +41,7 @@ login_manager.login_message = "Por favor, inicie sesión para acceder a esta pá
 login_manager.login_message_category = "info"
 csrf = CSRFProtect()
 mail = Mail()
+
 # Seguridad: Crear instancias de Limiter y Talisman fuera de la factoría
 limiter = Limiter(
     key_func=get_remote_address,
@@ -53,9 +51,13 @@ talisman = Talisman()
 
 @login_manager.user_loader
 def load_user(user_id):
+    """Carga el usuario activo en sesión (Blindado contra errores de conexión)."""
     repo = current_app.config.get('USUARIO_REPOSITORY')
     if repo:
-        return repo.find_by_id(int(user_id)) 
+        try:
+            return repo.find_by_id(int(user_id)) 
+        except Exception as e:
+            print(f"Error cargando sesión de usuario: {e}")
     return None
 
 def configure_logging(app):
@@ -123,8 +125,10 @@ def create_app():
             'https://cdnjs.cloudflare.com',  # FontAwesome desde CloudFlare
         ],
         'font-src': [
+            "'self'",
             'https://cdn.jsdelivr.net',
             'https://cdnjs.cloudflare.com',  # FontAwesome desde CloudFlare
+            'data:',
         ],
         'img-src': [
             "'self'",
@@ -143,12 +147,8 @@ def create_app():
         content_security_policy_nonce_in=['script-src'],
         permissions_policy={},  # Ignorar browsing-topics de forma segura
     )
-    from app.presentation.routes.record_laboral_routes import record_laboral_bp
-    app.register_blueprint(record_laboral_bp)
     
-
     # --- FILTRO DE PLANTILLA PARA ZONA HORARIA ---
-    # Se define un filtro personalizado para Jinja2.
     @app.template_filter('localtime')
     def localtime_filter(utc_dt):
         """
@@ -165,27 +165,21 @@ def create_app():
     def inject_csp_nonce():
         """Inyecta la función csp_nonce() en todos los templates."""
         def csp_nonce():
-            from flask import g, request
-            
             # Talisman almacena el nonce en g.csp_nonce
             nonce = g.get('csp_nonce', '')
-            
             # Si no está en g, intenta obtenerlo de la respuesta headers
             if not nonce and hasattr(request, 'environ'):
-                # Obtener del contexto local de Talisman
                 nonce = g.get('csp_nonce', '')
-            
             return nonce
-        
         return {'csp_nonce': csp_nonce}
     
-    # --- CONTEXT PROCESSOR: CONTADORES GLOBALES (BLINDADO v2) ---
+    # --- CONTEXT PROCESSOR: CONTADORES GLOBALES (BLINDADO v3) ---
     @app.context_processor
     def inject_counts():
         """
         Calcula contadores para 'Solicitudes' (Docs) y 'Modificación' (ARCO).
-        CORRECCIÓN DEFINITIVA: Utiliza la conexión compartida de Flask (g) 
-        de forma natural, sin cerrarla ni forzar "resurrecciones".
+        CORRECCIÓN: Se eliminó el 'with conn.cursor()' para evitar cierres accidentales 
+        de la conexión compartida y se maneja el cierre del cursor de forma explícita y segura.
         """
         conteo_docs = 0
         conteo_arco = 0
@@ -197,7 +191,7 @@ def create_app():
         # Definir roles permitidos
         roles_admin = ['Administrador', 'Escalafon', 'Legajos', 'AdministradorEscalafon', 'AdministradorLegajos', 'RRHH', 'Sistemas']
 
-        if current_user.rol in roles_admin:
+        if hasattr(current_user, 'rol') and current_user.rol in roles_admin:
             # 1. CONTAR SOLICITUDES DE DOCUMENTOS
             try:
                 solicitud_service = current_app.config.get('SOLICITUDES_SERVICE')
@@ -206,35 +200,37 @@ def create_app():
                     if pendientes:
                         conteo_docs = len(pendientes)
             except Exception:
-                # Fallo silencioso para no romper la web
-                pass
+                pass # Fallo silencioso para no romper la web
 
-            # 2. CONTAR SOLICITUDES ARCO (Limpio y directo)
+            # 2. CONTAR SOLICITUDES ARCO (Limpio y Seguro)
+            cursor = None
             try:
-                from app.database import get_db_read
-                
-                # Obtenemos la conexión (Flask nos dará la misma que ya usó la ruta principal)
+                # Obtenemos la conexión compartida
                 conn = get_db_read()
-                cursor = conn.cursor()
                 
+                # 🛡️ Manejo explícito del cursor sin usar 'with'
+                cursor = conn.cursor()
                 cursor.execute("SELECT COUNT(*) FROM solicitudes_arco WHERE estado = 'PENDIENTE'")
                 row = cursor.fetchone()
                 if row:
                     conteo_arco = row[0]
-                
-                # 🚀 IMPORTANTE: Solo cerramos el cursor para liberar memoria.
-                # NUNCA hacemos conn.close() aquí, Flask (teardown_appcontext) lo hará al final.
-                cursor.close()
-
             except Exception as e:
-                # Si algo falla aquí, solo imprimimos en consola negra, no mostramos error al usuario
+                # Si algo falla aquí, solo imprimimos en consola negra
                 print(f"⚠️ Error silencioso en contador ARCO: {e}")
+            finally:
+                # 🛡️ Cerramos estrictamente SOLO el cursor.
+                # Dejamos 'conn' intacta para que el resto de la página web pueda usarla.
+                if cursor:
+                    try:
+                        cursor.close()
+                    except Exception:
+                        pass
 
         # Retornamos ambas variables listas para usarse en el HTML
         return dict(conteo_docs=conteo_docs, conteo_arco=conteo_arco)
 
     with app.app_context():
-        # --- Inyección de Dependencias (sin cambios) ---
+        # --- Inyección de Dependencias ---
         usuario_repo = SqlServerUsuarioRepository()
         personal_repo = SqlServerPersonalRepository()
         audit_repo = SqlServerAuditoriaRepository()
@@ -252,7 +248,7 @@ def create_app():
         app.config['BACKUP_SERVICE'] = BackupService(backup_repo, app.config, audit_service)
         app.config['SOLICITUDES_SERVICE'] = SolicitudService(solicitud_repo)
         
-        app.config['USUARIO_SERVICE'] = UsuarioService(usuario_repo,personal_repo, email_service)
+        app.config['USUARIO_SERVICE'] = UsuarioService(usuario_repo, personal_repo, email_service)
         app.config['AUDIT_SERVICE'] = audit_service
         app.config['LEGAJO_SERVICE'] = LegajoService(personal_repo, audit_service, app.config['USUARIO_SERVICE'])
         app.config['MONITORING_SERVICE'] = MonitoringService(personal_repo)
@@ -263,18 +259,21 @@ def create_app():
         from .presentation.routes.sistemas_routes import sistemas_bp
         from .presentation.routes.rrhh_routes import rrhh_bp
         from .presentation.routes.error_routes import error_bp
-        from .presentation.routes.personal_routes import personal_bp # <-- Nuevo blueprint para empleados
-        from .presentation.routes.pdf_upload_routes import pdf_bp # <-- Nuevo blueprint para PDF
-        from .presentation.routes.admin_catalogo_routes import admin_catalogo_bp # <-- Nuevo blueprint para catálogos
+        from .presentation.routes.personal_routes import personal_bp 
+        from .presentation.routes.pdf_upload_routes import pdf_bp 
+        from .presentation.routes.admin_catalogo_routes import admin_catalogo_bp 
+        from .presentation.routes.record_laboral_routes import record_laboral_bp
+
         # Registrar Blueprints
         app.register_blueprint(auth_bp)
         app.register_blueprint(legajo_bp)
         app.register_blueprint(sistemas_bp)
         app.register_blueprint(rrhh_bp)
         app.register_blueprint(error_bp)
-        app.register_blueprint(personal_bp) # <-- Registrar blueprint de empleados
-        app.register_blueprint(pdf_bp) # <-- Registrar blueprint de PDF
-        app.register_blueprint(admin_catalogo_bp) # <-- Registrar blueprint de catálogos
+        app.register_blueprint(personal_bp) 
+        app.register_blueprint(pdf_bp) 
+        app.register_blueprint(admin_catalogo_bp) 
+        app.register_blueprint(record_laboral_bp)
 
 
         @app.route('/')
@@ -302,29 +301,28 @@ def create_app():
             from flask import jsonify
             return jsonify({'status': 'ok', 'message': 'Servidor activo'})
 
-        # Se elimina la ruta /dashboard conflictiva.
-        # La lógica de redirección ahora está centralizada en la ruta raíz ('/').
-
-
-        # --- MANEJADOR DE ERRORES GLOBAL ---
+        # --- MANEJADOR DE ERRORES GLOBAL (Blindado) ---
         @app.errorhandler(Exception)
         def handle_exception(e):
-            """Atrapa cualquier error y lo muestra en pantalla sin romper Flask."""
+            """Atrapa cualquier error y lo muestra en pantalla o lo procesa amigablemente."""
+            error_str = str(e)
+            
             # Registramos el error en la base de datos (si es posible)
             try:
                 registrar_error_automatico(e)
             except:
-                pass # Si falla el registro, no importa, seguimos
+                pass 
             
-            # Imprimimos en la consola negra para que tú lo veas
-            print(f"🔥 ERROR CRÍTICO CAPTURADO: {e}")
+            print(f"🔥 ERROR CRÍTICO CAPTURADO: {error_str}")
             
-            # Devolvemos el error como TEXTO (str) con código 500
-            # Esto arregla el TypeError que estás viendo
-            return f"⚠️ Ocurrió un error en el sistema: {str(e)}", 500
+            # 🛡️ Parche amigable: Si es el clásico error de conexión cerrada (por si acaso vuelve),
+            # mostramos un mensaje que le diga al usuario que solo refresque.
+            if "closed connection" in error_str.lower():
+                return render_template('errors/500.html', 
+                    error_titulo="Sincronización Interrumpida",
+                    error_mensaje="La conexión con la base de datos se pausó temporalmente. Por favor, presiona F5 o recarga la página."), 500
+
+            # Devolvemos el error genérico como TEXTO (str) con código 500
+            return f"⚠️ Ocurrió un error en el sistema: {error_str}", 500
             
-        
     return app
-
-
-    

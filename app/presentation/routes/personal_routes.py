@@ -262,8 +262,8 @@ def solicitar_cancelacion():
             conn.rollback() # Si falla, deshacemos
             current_app.logger.error(f"Error guardando solicitud: {e}")
             flash('Ocurrió un error al procesar la solicitud en la base de datos.', 'danger')
-        finally:
-            conn.close()
+        #finally:
+            #conn.close()
 
     return render_template('personal/solicitar_cancelacion.html')
 

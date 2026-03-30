@@ -1,4 +1,6 @@
 # RUTA: app/infrastructure/persistence/sqlserver_repository.py
+import os
+import subprocess
 from datetime import datetime
 import logging
 from app.database.connector import get_db_read, get_db_write

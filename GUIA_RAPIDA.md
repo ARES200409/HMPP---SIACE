@@ -40,28 +40,8 @@
 
 ---
 
-## 🚀 Paso 2: Instalar el Sistema
 
-### Opción Fácil (Recomendada):
-```
-1. Abrir la carpeta del proyecto
-2. Hacer doble clic en: INSTALAR.bat
-3. Seguir las instrucciones en pantalla
-4. ¡Listo!
-```
-
-### Opción Manual:
-```cmd
-# 1. Abrir PowerShell o CMD en la carpeta del proyecto
-# 2. Ejecutar:
-python installer.py
-
-# 3. Seguir las instrucciones
-```
-
----
-
-## 🎮 Paso 3: Usar el Sistema
+## 🎮 Paso 2: Usar el Sistema
 
 ```cmd
 # 1. Crear el primer usuario administrador
@@ -132,7 +112,7 @@ python verificar_sistema.py
 Tu PC
 ├── Python ✓
 ├── SQL Server Express ✓
-└── Sistema Legajo Digital ✓
+└── Sistema SIACE HMPP ✓
 
 Acceso: Solo desde tu PC
 URL: http://localhost:5001
@@ -143,7 +123,7 @@ URL: http://localhost:5001
 Servidor (1 PC con todo instalado)
 ├── Python ✓
 ├── SQL Server ✓
-└── Sistema Legajo Digital ✓
+└── Sistema SIACE HMPP  ✓
 
 Clientes (Otras PCs)
 └── Solo necesitan navegador web
@@ -157,7 +137,7 @@ URL: http://IP-DEL-SERVIDOR:5001
 Servidor en la Nube
 ├── Python ✓
 ├── SQL Server ✓
-└── Sistema Legajo Digital ✓
+└── Sistema SIACE HMPP  ✓
 
 Usuarios
 └── Solo necesitan navegador web e internet
@@ -192,7 +172,7 @@ URL: https://tu-dominio.com
 - ✅ Python: GRATIS
 - ✅ SQL Server Express: GRATIS
 - ✅ ODBC Driver: GRATIS
-- ✅ Sistema Legajo Digital: GRATIS
+- ✅ Sistema SIACE HMPP : GRATIS
 
 ### ¿Qué pasa si algo falla?
 1. Ejecuta `python verificar_sistema.py`
@@ -214,7 +194,6 @@ Durante la instalación:
 - [ ] Instalé Python (con "Add to PATH")
 - [ ] Instalé SQL Server Express
 - [ ] Instalé ODBC Driver 17
-- [ ] Ejecuté INSTALAR.bat
 
 Después de instalar:
 - [ ] Ejecuté crear_admin.py

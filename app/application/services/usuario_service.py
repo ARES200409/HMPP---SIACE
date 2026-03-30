@@ -240,7 +240,7 @@ class UsuarioService:
                 password_hash=password_hash,
                 id_rol=id_rol,
                 activo=True,
-                id_personal=id_personal, # Vínculo garantizado en la BaseDatosDiresa
+                id_personal=id_personal, # Vínculo garantizado en la BaseDatosHMPP
                 fecha_creacion=datetime.utcnow()
             )
             

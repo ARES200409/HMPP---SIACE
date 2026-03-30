@@ -45,7 +45,7 @@ if __name__ == "__main__":
     
     print(f"""
     ╔═══════════════════════════════════════════════════════════════╗
-    ║        LEGAJO DIGITAL DIRESA - SERVIDOR DE PRODUCCIÓN        ║
+    ║          SIACE - HMPP PASCO - SERVIDOR DE PRODUCCIÓN          ║
     ╚═══════════════════════════════════════════════════════════════╝
     
     🚀 Servidor: Waitress WSGI

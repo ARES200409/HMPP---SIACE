@@ -196,7 +196,7 @@ class AccountLockoutManager:
             
             Por favor revisa el archivo de auditoría para más detalles.
             
-            Sistema de Seguridad - Legajo Digital DIRESA
+            Sistema de Seguridad - Legajo Digital HMPP
             """
             
             # Obtener email del admin

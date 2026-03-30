@@ -88,29 +88,6 @@ Antes de ejecutar el instalador, la PC debe tener instalado:
 
 ---
 
-## 📦 ¿Qué se instala automáticamente?
-
-El instalador (`INSTALAR.bat` o `installer.py`) se encarga de:
-
-✅ **Dependencias de Python** (automático):
-- Flask (framework web)
-- pyodbc (conexión a SQL Server)
-- Flask-Login (autenticación)
-- Flask-Mail (envío de emails)
-- Y muchas más... (ver `requirements.txt`)
-
-✅ **Base de datos** (automático):
-- Crea la base de datos `BaseDatosDiresa`
-- Crea todas las tablas
-- Crea procedimientos almacenados
-- Crea índices
-- Configura usuarios y permisos
-
-✅ **Configuración** (automático):
-- Genera archivo `.env` con credenciales
-- Configura claves de seguridad
-
----
 
 ## 🚫 ¿Qué NO se instala automáticamente?
 
@@ -134,7 +111,6 @@ Usa este checklist para verificar que tienes todo listo:
 - [ ] Tienes al menos 10 GB de espacio libre en disco
 
 ### Durante la instalación:
-- [ ] Ejecutar `INSTALAR.bat` o `python installer.py`
 - [ ] Proporcionar credenciales de SQL Server
 - [ ] Configurar usuarios de la aplicación
 - [ ] (Opcional) Configurar email

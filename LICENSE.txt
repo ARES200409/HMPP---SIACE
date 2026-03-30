@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2026 HMPP Pasco
+Copyright (c) 2026 Jairo Francisco Santos Mandujano / HMPP Pasco
 
 Se concede permiso, de forma gratuita, a cualquier persona que obtenga una copia
 de este software y de los archivos de documentación asociados (el "Software"), 
@@ -20,10 +20,14 @@ RESPONSABILIDADES, YA SEA EN UNA ACCIÓN DE CONTRATO, AGRAVIO O CUALQUIER OTRO
 MOTIVO, QUE SURJA DE O EN CONEXIÓN CON EL SOFTWARE O EL USO U OTROS TRATOS EN EL 
 SOFTWARE.
 
----
+-------------------------------------------------------------------------------
 
-Sistema de Legajo Digital - DIRESA Pasco
-Desarrollado para la gestión eficiente de legajos digitales del personal.
+SIACE - Sistema Integral de Administración de Contratos y Escalafón
+Honorable Municipalidad Provincial de Pasco (HMPP)
 
-Para soporte técnico, consulte la documentación incluida o contacte al 
-equipo de desarrollo.
+Desarrollado para la gestión moderna y eficiente de los legajos digitales y 
+procesos de escalafón institucional.
+
+Desarrollador: Jairo Francisco Santos Mandujano
+Institución: Universidad Nacional Daniel Alcides Carrión (UNDAC)
+Soporte Técnico: Consulte la documentación técnica incluida (DOCUMENTACION.md).

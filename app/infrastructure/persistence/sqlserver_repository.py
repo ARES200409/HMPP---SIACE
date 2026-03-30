@@ -1030,7 +1030,7 @@ class SqlServerPersonalRepository(IPersonalRepository):
 
     def update(self, personal_id, form_data):
         """
-        Actualiza los datos del personal en la BaseDatosDiresa usando el SP.
+        Actualiza los datos del personal en la BaseDatosHMPP usando el SP.
         Garantiza que el cambio de unidad administrativa (ej. ID 6) se guarde correctamente.
         """
         try:

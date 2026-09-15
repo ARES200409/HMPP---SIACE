@@ -26,13 +26,9 @@ logs/
 .DS_Store
 Thumbs.db
 *.pdf
-ngrok.exe
+
 
 
 # Bloque para ignorar instaladores, comprimidos y scripts locales
-*.exe
 *.msi
-*.zip
 *.rar
-setup.iss
-launcher.vbs

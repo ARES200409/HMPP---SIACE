@@ -79,25 +79,39 @@ def login():
                 # Guardamos en la sesión el rol que seleccionó para usarlo después del 2FA
                 session['login_role_selected'] = selected_role
 
-                # 📧 3. ENVÍO DE CORREO (USANDO EL CÓDIGO REAL)
+                # 📧 3. ENVÍO DE CORREO (USANDO EL CÓDIGO REAL) - NO BLOQUEANTE
                 email_service = current_app.config.get('EMAIL_SERVICE')
-                
+
+                # SIEMPRE mostrar el código en consola cuando DEBUG=True
+                if current_app.config.get('DEBUG'):
+                    print()
+                    print("========================================================")
+                    print(f"  CODIGO 2FA PARA '{username}': {code_real}")
+                    print("========================================================")
+                    print()
+
                 if email_service and user_temp.email:
-                    # 💡 CAMBIO CRÍTICO: Usamos 'code_real' directamente. 
-                    # NO llames a get_current_2fa aquí porque eso te daría el hash.
-                    email_service.send_2fa_code(
-                        recipient_email=user_temp.email,
-                        user_name=user_temp.username,
-                        code=code_real # <--- LOS 6 DÍGITOS LIMPIOS
-                    )
-                    flash(f'Se ha enviado un código de seguridad a: {user_temp.email}', 'info')
+                    try:
+                        email_service.send_2fa_code(
+                            recipient_email=user_temp.email,
+                            user_name=user_temp.username,
+                            code=code_real
+                        )
+                        flash(f'Se ha enviado un código de seguridad a: {user_temp.email}', 'info')
+                    except Exception as email_err:
+                        # Si el correo falla, NO bloqueamos el acceso.
+                        # En desarrollo el código está en la terminal.
+                        current_app.logger.warning(f"Email 2FA no enviado (no bloqueante): {email_err}")
+                        flash('No se pudo enviar el correo. Usa el código mostrado en la terminal (modo desarrollo).', 'warning')
+                else:
+                    flash('Ingresa el código de verificación mostrado en la terminal del servidor.', 'info')
 
                 # 4. PREPARAR SESIÓN
                 AccountLockoutManager.reset_failed_attempts(username)
-                session['2fa_user_id'] = user_id # 💡 IMPORTANTE: Solo el ID, no la tupla
+                session['2fa_user_id'] = user_id
                 session['2fa_username'] = username
                 session['2fa_remember_me'] = form.remember_me.data
-                
+
                 return redirect(url_for('auth.verify_2fa'))
             
             else:

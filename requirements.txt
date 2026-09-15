@@ -25,3 +25,5 @@ Werkzeug==3.1.3
 Pillow==11.0.0
 xhtml2pdf==0.2.16
 weasyprint
+xlsxwriter
+google-generativeai>=0.8.0

@@ -25,7 +25,8 @@ from .application.services.legajo_service import LegajoService
 from .application.services.audit_service import AuditService
 from .application.services.solicitud_service import SolicitudService 
 from .application.services.backup_service import BackupService 
-from .application.services.monitoring_service import MonitoringService 
+from .application.services.monitoring_service import MonitoringService
+from .application.services.ai_service import GeminiAIService
 from .infrastructure.persistence.sqlserver_repository import (
     SqlServerUsuarioRepository, 
     SqlServerPersonalRepository, 
@@ -263,6 +264,7 @@ def create_app():
         from .presentation.routes.pdf_upload_routes import pdf_bp 
         from .presentation.routes.admin_catalogo_routes import admin_catalogo_bp 
         from .presentation.routes.record_laboral_routes import record_laboral_bp
+        from .presentation.routes.chat_routes import chat_bp
 
         # Registrar Blueprints
         app.register_blueprint(auth_bp)
@@ -274,6 +276,15 @@ def create_app():
         app.register_blueprint(pdf_bp) 
         app.register_blueprint(admin_catalogo_bp) 
         app.register_blueprint(record_laboral_bp)
+        app.register_blueprint(chat_bp)
+
+        # --- Inicializar Servicio de IA (Gemini Flash) ---
+        gemini_api_key = os.environ.get('GEMINI_API_KEY')
+        if gemini_api_key:
+            app.config['AI_SERVICE'] = GeminiAIService(gemini_api_key)
+        else:
+            app.logger.warning("GEMINI_API_KEY no configurada. Chatbot IA desactivado.")
+            app.config['AI_SERVICE'] = None
 
 
         @app.route('/')

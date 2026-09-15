@@ -18,6 +18,11 @@
             <i class="bi bi-arrow-left"></i> Volver
         </a>
         
+        {# 🔥 NUEVO BOTÓN: Convertidor de Excel (Siempre visible o condicionado si deseas) #}
+        <button type="button" class="btn btn-info text-white ms-2 shadow-sm fw-bold" data-bs-toggle="modal" data-bs-target="#modalConvertidor">
+            <i class="bi bi-magic me-2"></i> CONVERTIR EXCEL INCOMPLETOS
+        </button>
+        
         {# 🔥 BOTÓN DE CARGA MASIVA (Abre el Modal) - Solo si está ABIERTA #}
         {% if planilla.estado == 'ABIERTA' %}
         <button type="button" class="btn btn-success ms-2 shadow-sm fw-bold" data-bs-toggle="modal" data-bs-target="#modalCargaMasiva">
@@ -147,6 +152,46 @@
     </div>
 </div>
 
+{# ========================================================= #}
+{# 🔥 MODAL DEL CONVERTIDOR DE EXCEL MUNI (NUEVO) #}
+{# ========================================================= #}
+<div class="modal fade" id="modalConvertidor" tabindex="-1" aria-labelledby="modalConvertidorLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-info shadow-lg">
+      <div class="modal-header bg-info text-white py-3">
+        <h5 class="modal-title fw-bold" id="modalConvertidorLabel">
+            <i class="bi bi-magic me-2"></i>Convertir Plantilla de la Municipalidad
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form action="{{ url_for('rrhh.convertir_excel_muni') }}" method="POST" enctype="multipart/form-data">
+          <div class="modal-body bg-light p-4">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              
+              <div class="alert alert-warning py-2 px-3 mb-4 shadow-sm border-warning d-flex align-items-center">
+                  <i class="bi bi-exclamation-triangle-fill fs-4 me-3 text-warning"></i>
+                  <span class="small text-dark fw-bold">Sube el Excel original de la municipalidad. El sistema le agregará las columnas faltantes y te descargará el formato oficial listo para el sistema.</span>
+              </div>
+              
+              <div class="mb-3">
+                  <label class="form-label fw-bold text-dark"><i class="bi bi-file-earmark-excel-fill text-info me-1"></i> Seleccione el Archivo Excel Muni</label>
+                  <input class="form-control border-info form-control-lg" type="file" name="archivo_muni" accept=".xls, .xlsx" required>
+              </div>
+          </div>
+          <div class="modal-footer bg-white">
+            <button type="button" class="btn btn-outline-secondary fw-bold px-4" data-bs-dismiss="modal">Cancelar</button>
+            <button type="submit" class="btn btn-info text-white fw-bold px-4" onclick="this.innerHTML='<i class=\'bi bi-hourglass-split\'></i> Convirtiendo...'; this.style.pointerEvents='none'; this.form.submit();">
+                <i class="bi bi-gear-fill me-1"></i> Generar Formato Oficial
+            </button>
+          </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{# ========================================================= #}
+{# MODAL DE CARGA MASIVA ORIGINAL (SIN CAMBIOS) #}
+{# ========================================================= #}
 {% if planilla.estado == 'ABIERTA' %}
 <div class="modal fade" id="modalCargaMasiva" tabindex="-1" aria-labelledby="modalCargaMasivaLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
@@ -180,7 +225,6 @@
               <div class="mb-4">
                   <label class="form-label fw-bold text-dark"><i class="bi bi-2-circle-fill text-success me-1"></i> Periodo a extraer (Ej: 202601):</label>
                   <small class="text-muted d-block mt-1">Según el PERIODO que se encuentre la planilla.</small>
-                  <small class="text-muted d-block mt-1">                                               </small>
                   <input type="text" class="form-control border-success fw-bold text-secondary" name="filtro_periodo" placeholder="YYYYMM" required>
                   <small class="text-muted d-block mt-1">El sistema buscará este valor en la columna "PERIODO".</small>
               </div>
@@ -188,7 +232,6 @@
               <div class="mb-2">
                   <label class="form-label fw-bold text-dark"><i class="bi bi-3-circle-fill text-success me-1"></i> Extraer trabajadores del Régimen:</label>
                   <small class="text-muted d-block mt-1">Según el RÉGIMEN que se encuentre la planilla.</small>
-                  <small class="text-muted d-block mt-1">                                               </small>
                   <select class="form-select border-success form-select-lg fw-bold text-secondary" name="filtro_condicion" required>
                       <option value="">-- Seleccione el Tipo de Contrato --</option>
                       <option value="CAS">1 - D.L. 1057 (CAS Regular)</option>
@@ -213,6 +256,7 @@
   </div>
 </div>
 {% endif %}
+
 {% else %}
 {# Fallback: Si el ID de planilla no existe #}
 <div class="alert alert-warning text-center my-5 shadow-sm">

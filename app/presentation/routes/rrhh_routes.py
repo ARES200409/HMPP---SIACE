@@ -8,7 +8,12 @@ from app.application.forms import ContratoInicialForm
 from app.database import db
 from app.infrastructure.persistence.planilla_repository import PlanillaRepository
 from io import BytesIO
-from weasyprint import HTML # Requisito: pip install weasyprint
+try:
+    from weasyprint import HTML  # Requisito: pip install weasyprint + GTK3 runtime
+    WEASYPRINT_AVAILABLE = True
+except Exception:
+    HTML = None
+    WEASYPRINT_AVAILABLE = False
 from app.infrastructure.persistence.sqlserver_repository import SqlServerPersonalRepository
 import zlib
 # Creamos el Blueprint para el rol de RRHH
@@ -905,7 +910,7 @@ def generar_reporte_anual(id_personal, anio):
             FROM detalle_planilla dp
             INNER JOIN planillas pl ON dp.id_planilla = pl.id_planilla
             INNER JOIN personal p ON dp.id_personal = p.id_personal
-            WHERE dp.id_personal = ? AND pl.anio = ?
+            WHERE dp.id_personal = ? AND pl.anio = ? AND pl.eliminado = 0
             ORDER BY pl.mes DESC
         """, (id_personal, anio))
         
@@ -1139,6 +1144,17 @@ def importar_excel_planilla(id_planilla):
         # Limpiamos los nombres de las columnas
         df.columns = [str(c).strip().upper() for c in df.columns]
 
+        # =========================================================================
+        # 🔥 FIX: REPARACIÓN DE CEROS A LA IZQUIERDA PARA EL DNI
+        # =========================================================================
+        # Nota: Cambia 'DNI' por el nombre de la columna si en tu Excel se llama distinto (ej. 'NUM_DOC')
+        if 'DNI' in df.columns:
+            df['DNI'] = df['DNI'].fillna('') \
+                                 .astype(str) \
+                                 .str.replace('.0', '', regex=False) \
+                                 .str.strip() \
+                                 .str.zfill(8)  # Esto le pone los ceros faltantes hasta llegar a 8
+
         # 2. 🔥 FILTRO POR PERIODO
         if filtro_periodo:
             if 'PERIODO' in df.columns:
@@ -1148,13 +1164,40 @@ def importar_excel_planilla(id_planilla):
                 flash("❌ El Excel no tiene la columna 'PERIODO'. Asegúrese de usar el formato correcto.", "danger")
                 return redirect(url_for('rrhh.editar_planilla_grilla', id_planilla=id_planilla))
 
-        # 3. 🔥 FILTRO POR CONDICIÓN LABORAL
+        # 3. 🔥 FILTRO INTELIGENTE POR CONDICIÓN O TIPO DE TRABAJADOR
         if filtro_condicion != 'TODOS':
-            if 'CONDICION' in df.columns:
-                df['CONDICION'] = df['CONDICION'].fillna('').astype(str).str.upper()
-                df = df[df['CONDICION'].str.contains(filtro_condicion)]
+            # Verificamos si existen las columnas
+            tiene_condicion = 'CONDICION' in df.columns
+            tiene_tipotrab = 'TIPOTRAB' in df.columns
+
+            if tiene_condicion or tiene_tipotrab:
+                # Llenamos los vacíos con texto para que no se rompa la búsqueda
+                if tiene_condicion: 
+                    df['CONDICION'] = df['CONDICION'].fillna('').astype(str).str.upper()
+                if tiene_tipotrab: 
+                    df['TIPOTRAB'] = df['TIPOTRAB'].fillna('').astype(str).str.upper()
+
+                # A. Creamos la máscara de búsqueda principal
+                if tiene_condicion and tiene_tipotrab:
+                    mask = df['CONDICION'].str.contains(filtro_condicion) | df['TIPOTRAB'].str.contains(filtro_condicion)
+                elif tiene_condicion:
+                    mask = df['CONDICION'].str.contains(filtro_condicion)
+                elif tiene_tipotrab:
+                    mask = df['TIPOTRAB'].str.contains(filtro_condicion)
+                
+                # B. 🔥 BLINDAJE ANTI-CONFUSIÓN (El parche para CAS vs CAS CONFIANZA)
+                if filtro_condicion == 'CAS':
+                    # Si buscamos CAS Regular, le RESTAMOS (~) todos los que digan CONFIANZA
+                    if tiene_condicion:
+                        mask = mask & ~df['CONDICION'].str.contains('CONFIANZA')
+                    if tiene_tipotrab:
+                        mask = mask & ~df['TIPOTRAB'].str.contains('CONFIANZA')
+
+                # C. Aplicamos el filtro definitivo al Excel
+                df = df[mask]
+
             else:
-                flash("❌ El Excel no tiene la columna 'CONDICION'.", "danger")
+                flash("❌ El Excel no tiene la columna 'CONDICION' ni 'TIPOTRAB'.", "danger")
                 return redirect(url_for('rrhh.editar_planilla_grilla', id_planilla=id_planilla))
 
         if df.empty:
@@ -1347,3 +1390,105 @@ def descargar_plantilla_excel():
         as_attachment=True,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
+
+
+from flask import request, flash, redirect, send_file
+import io
+import pandas as pd
+# Asegúrate de importar tu blueprint, que asumo se llama rrhh_bp
+
+# =========================================================================
+# 🔥 NUEVA RUTA: CONVERTIDOR DE EXCEL DE LA MUNICIPALIDAD A FORMATO SISTEMA
+# =========================================================================
+@rrhh_bp.route('/planillas/convertir-formato', methods=['POST'])
+# @login_required  <-- Descomenta esto si usas protección de rutas
+# @role_required('AdministradorLegajos', 'RRHH') <-- Y esto también si usas roles
+def convertir_excel_muni():
+    if 'archivo_muni' not in request.files:
+        flash("No se subió ningún archivo.", "warning")
+        return redirect(request.referrer)
+        
+    file = request.files['archivo_muni']
+    if file.filename == '':
+        flash("No seleccionó ningún archivo.", "warning")
+        return redirect(request.referrer)
+
+    try:
+        # 1. Leemos el Excel "resumido" de la Municipalidad
+        df_muni = pd.read_excel(file)
+        
+        # Limpiamos los nombres de las columnas (quitamos espacios ocultos)
+        df_muni.columns = [str(c).strip().upper() for c in df_muni.columns]
+
+        # 2. Tu lista OFICIAL y exacta de 76 columnas de tu sistema
+        columnas_oficiales = [
+            'PERIODO', 'NP', 'ACTIVIDAD', 'META', 'NUM', 'PATERNO', 'MATERNO', 'NOMBRES', 'DNI', 
+            'FNAC', 'NCUENTA', 'NCTACTS', 'AUTOG', 'REGPENS', 'AFPCUPPS', 'INGRAFP', 'CFOTOCHE', 
+            'SINDIC', 'FINGR', 'CONDICION', 'NIVEL', 'TIPOTRAB', 'CARGO', 'UBICACION', 'SCTR', 
+            'DIASCONT', 'DIASTRAB', 'FALTAS', 'DIASSUBSI', 'HORAS', 'TARDANZAS', 'BASICA', 
+            'REUNIF', 'TPH-COSVID', 'PERSON', 'FAMILI', 'BONESP', 'REFMOV', 'BONODIF', 'DS276', 
+            'DU03794', 'INCFONV', 'D.L.26504', 'DS 326-2025-EF', 'INCAFP', 'DL268-EF', 'Encarg', 
+            'TOTALBRU', 'SUELDOBASE', 'DCAFAE', 'DONP', 'DPROFU', 'DHABITAT', 'DINTEGRA', 
+            'DPRIMA', 'DESSAVI', 'DQUINTACAT', 'DJUDIC', 'DSINDIC', 'DAREQUIPA', 'DA/SOLID', 
+            'DCENTROCOOP', 'DCOOPAC', 'DLIMENTOS', 'DSMILAGROS', 'DMILPOCOOP', 'DMAYNAS', 
+            'RIMAC', 'DE-SIN', 'TDESCUEN', 'RPS', 'SCTR ONP', 'CTS', 'TOTALAPORT', 'NCOBRAR'
+        ]
+
+        # 3. Creamos un nuevo DataFrame vacío solo con tus columnas oficiales
+        df_sistema = pd.DataFrame(columns=columnas_oficiales)
+
+        # 4. Magia: Copiamos los datos que coinciden de la Muni a tu Sistema
+        for col in df_muni.columns:
+            if col in columnas_oficiales:
+                df_sistema[col] = df_muni[col]
+
+        # =========================================================================
+        # 🔥 FIX 1: Mantener los ceros a la izquierda del DNI
+        # =========================================================================
+        if 'DNI' in df_sistema.columns:
+            df_sistema['DNI'] = df_sistema['DNI'].fillna('').astype(str).str.replace('.0', '', regex=False).str.strip().str.zfill(8)
+
+        # =========================================================================
+        # 🔥 FIX 2: Limpieza de Fechas (Evitar NaT y horas 00:00:00)
+        # =========================================================================
+        columnas_fechas = ['FINGR', 'FNAC'] # Puedes agregar más columnas de fecha aquí si lo necesitas
+        for col_fecha in columnas_fechas:
+            if col_fecha in df_sistema.columns and col_fecha in df_muni.columns:
+                # Convierte a formato fecha real, luego a texto DD/MM/YYYY. Los vacíos se vuelven ''
+                df_sistema[col_fecha] = pd.to_datetime(df_muni[col_fecha], errors='coerce').dt.strftime('%d/%m/%Y').fillna('')
+
+        # =========================================================================
+        # 🔥 FIX 3: ELIMINAR FILAS BASURA (Totales, subtotales, celdas vacías)
+        # =========================================================================
+        # 1. Eliminamos cualquier fila donde el DNI sea '00000000' o esté totalmente vacío
+        if 'DNI' in df_sistema.columns:
+            df_sistema = df_sistema[df_sistema['DNI'] != '00000000']
+            df_sistema = df_sistema[df_sistema['DNI'] != '']
+        
+        # 2. Eliminamos filas donde no haya datos esenciales (Ej: si no hay PATERNO ni NOMBRES, no es trabajador)
+        # Usamos dropna para borrar la fila solo si AMBOS están vacíos (NaN o NaT)
+        if 'PATERNO' in df_sistema.columns and 'NOMBRES' in df_sistema.columns:
+            # Primero reemplazamos posibles strings vacíos por NaN para que dropna los detecte
+            import numpy as np
+            df_sistema['PATERNO'] = df_sistema['PATERNO'].replace('', np.nan)
+            df_sistema['NOMBRES'] = df_sistema['NOMBRES'].replace('', np.nan)
+            df_sistema = df_sistema.dropna(subset=['PATERNO', 'NOMBRES'], how='all')
+            # Devolvemos los posibles NaN sobrantes a string vacío por seguridad
+            df_sistema['PATERNO'] = df_sistema['PATERNO'].fillna('')
+            df_sistema['NOMBRES'] = df_sistema['NOMBRES'].fillna('')
+
+        # 5. Generamos el nuevo Excel directamente en la Memoria RAM (sin gastar disco duro)
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            df_sistema.to_excel(writer, index=False, sheet_name='PLANILLA_OFICIAL')
+        
+        output.seek(0)
+
+        # 6. Forzamos la descarga automática del archivo convertido
+        nombre_descarga = "PLANILLA_SISTEMA_HMPP.xlsx"
+        return send_file(output, download_name=nombre_descarga, as_attachment=True)
+
+    except Exception as e:
+        flash(f"Error al convertir el archivo: {str(e)}", "danger")
+        return redirect(request.referrer)
